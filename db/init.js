@@ -1,6 +1,17 @@
 import { dbHelper } from './dbHelper'
 
 export async function initDatabase() {
+  const isOpen = plus.sqlite.isOpenDatabase({
+    name: 'collector',
+    path: '_doc/collector.db'
+  })
+
+  if (!isOpen) {
+    plus.sqlite.openDatabase({
+      name: 'collector',
+      path: '_doc/collector.db'
+    })
+  }
   // 先打开数据库
   plus.sqlite.openDatabase({
     name: 'collector',

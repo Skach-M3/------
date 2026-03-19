@@ -8,9 +8,9 @@
 		{
 			"path": "pages/line/lineList",
 			"style": {
-			        "navigationBarTitleText": "",
-			        "navigationStyle": "custom"
-			      }
+				"navigationBarTitleText": "",
+				"navigationStyle": "custom"
+			}
 		},
 		{
 			"path": "pages/test/test"
@@ -18,16 +18,16 @@
 		{
 			"path": "pages/device/edit",
 			"style": {
-			        "navigationBarTitleText": "",
-			        "navigationStyle": "custom"
-			      }
+				"navigationBarTitleText": "",
+				"navigationStyle": "custom"
+			}
 		},
 		{
 			"path": "pages/line/edit",
 			"style": {
-			        "navigationBarTitleText": "",
-			        "navigationStyle": "custom"
-			      }
+				"navigationBarTitleText": "",
+				"navigationStyle": "custom"
+			}
 		}
 	],
 	"globalStyle": {

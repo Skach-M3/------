@@ -1,27 +1,15 @@
 <template>
   <view class="page-container">
     <!-- 顶部导航栏 -->
-    <u-navbar
-      title="线路"
-      :bgColor="themeColor"
-      titleStyle="color: #ffffff; font-weight: bold; font-size: 34rpx;"
-      leftIconColor="#ffffff"
-      :autoBack="true"
-      placeholder
-    ></u-navbar>
+    <u-navbar title="线路" :bgColor="themeColor" titleStyle="color: #ffffff; font-weight: bold; font-size: 34rpx;"
+      leftIconColor="#ffffff" :autoBack="true" placeholder></u-navbar>
 
     <!-- 搜索区域 -->
     <view class="search-wrapper">
       <view class="search-box">
         <u-icon name="search" size="44rpx" color="#999999"></u-icon>
-        <input
-          class="search-input"
-          type="text"
-          v-model="keyword"
-          placeholder="按名字搜索线路"
-          placeholder-class="search-placeholder"
-          @input="handleSearch"
-        />
+        <input class="search-input" type="text" v-model="keyword" placeholder="按名字搜索线路"
+          placeholder-class="search-placeholder" @input="handleSearch" />
       </view>
     </view>
 
@@ -115,11 +103,9 @@ onShow(() => {
   loadLines();
 });
 
-// 进入采集 → 跳转地图页（后续开发）
+// 进入采集 → 跳转地图页
 const handleCollect = (item: any) => {
-  // TODO: 跳转地图采集页
-  uni.showToast({ title: '地图页待开发', icon: 'none' });
-  // uni.navigateTo({ url: `/pages/map/index?lineId=${item.id}&lineName=${encodeURIComponent(item.name)}` });
+  uni.navigateTo({ url: `/pages/index/map?lineId=${item.id}&lineName=${encodeURIComponent(item.name)}` });
 };
 
 // 编辑

@@ -1,7 +1,5 @@
 // schema/pole.js  (杆塔示例)
-import { register } from './registry'
-
-const pole {
+export default  {
   deviceType: 'pole',
   label: '杆塔',
   icon: '/static/icons/pole.png',
@@ -63,7 +61,3 @@ const pole {
     { key: 'nameplate', label: '铭牌照', required: false, max: 1 }
   ]
 }
-
-register(pole)
-
-export default pole

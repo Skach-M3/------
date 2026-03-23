@@ -1,39 +1,82 @@
 <template>
   <view class="content">
+    <!-- 自定义顶部导航栏 -->
+    <view class="custom-nav">
+      <view class="nav-left" @click="goBack">
+        <text class="back-icon">←</text>
+      </view>
+      <view class="nav-title">线路采集</view>
+      <view class="nav-right"></view>
+    </view>
+
     <!-- 地图容器 -->
-    <view 
-      id="map" 
-      class="map-container" 
-      :prop="mapConfig" 
-      :change:prop="mapModule.updateMapConfig"
-    ></view>
+    <view id="map" class="map-container" :prop="mapConfig" :change:prop="mapModule.updateMapConfig"></view>
 
-    <!-- UI 控制层 -->
-    <view class="controls-panel">
-      <view class="info-box">
-        <text class="title">当前状态</text>
-        <text class="desc">{{ statusText }}</text>
+    <!-- 右侧悬浮工具栏 -->
+    <view class="right-tools">
+      <!-- 组1：功能菜单 -->
+      <view class="tool-group">
+        <view class="tool-item" @click="toast('数据')">
+          <text class="icon">📋</text>
+          <text class="text">数据</text>
+        </view>
+        <view class="tool-item" @click="toast('搜索')">
+          <text class="icon">🔍</text>
+          <text class="text">搜索</text>
+        </view>
+        <view class="tool-item" @click="toast('叠加')">
+          <text class="icon">📚</text>
+          <text class="text">叠加</text>
+        </view>
+        <view class="tool-item" @click="toast('名称')">
+          <text class="icon">👁</text>
+          <text class="text">名称</text>
+        </view>
       </view>
 
-      <view class="btn-group">
-        <!-- 新增定位按钮 -->
-        <button class="btn" type="primary" @click="locateUser">
-           📍 定位我
-        </button>
-        <button class="btn" type="default" @click="toggleLayer">
-          切换图层
-        </button>
+      <!-- 组2：地图控制 -->
+      <view class="tool-group">
+        <view class="tool-item" @click="toggleLayer">
+          <text class="icon">🗺️</text>
+          <text class="text">图层</text>
+        </view>
+        <view class="tool-item" @click="locateUser">
+          <text class="icon">📍</text>
+          <text class="text">定位</text>
+        </view>
       </view>
-      
-      <view class="btn-group" style="margin-top: 10px;">
-        <button class="btn" size="mini" @click="zoomIn">放大 (+)</button>
-        <button class="btn" size="mini" @click="zoomOut">缩小 (-)</button>
+
+      <!-- 组3：缩放控制 -->
+      <view class="tool-group">
+        <view class="tool-item zoom-btn" @click="zoomIn">
+          <text class="icon">+</text>
+        </view>
+        <view class="tool-item zoom-btn" @click="zoomOut">
+          <text class="icon">-</text>
+        </view>
       </view>
     </view>
+
+    <!-- 底部中间悬浮加号及展开菜单 -->
+    <view class="bottom-fab-wrapper">
+      <!-- 展开的子按钮 -->
+      <view class="fab-menu">
+        <view class="fab-sub-item" v-for="(item, index) in fabItems" :key="index" :style="getFabItemStyle(index)"
+          @click="handleFabClick(item)">
+          <text class="sub-text">{{ item.name }}</text>
+        </view>
+      </view>
+
+      <!-- 主按钮 -->
+      <view class="fab-main" @click="toggleFab">
+        <text class="fab-main-icon" :class="{ 'is-open': isFabOpen }">+</text>
+      </view>
+    </view>
+
   </view>
 </template>
 
-<!-- 1. 逻辑层 (Vue3 + TS) -->
+<!-- 1. 逻辑层 -->
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted } from 'vue';
 import { onLoad } from '@dcloudio/uni-app';
@@ -42,46 +85,44 @@ interface MapConfig {
   center: [number, number];
   zoom: number;
   layerType: 'vec' | 'img';
-  actionId: number; 
+  actionId: number;
   actionType: string;
 }
 
-const statusText = ref('等待操作...');
-
 // 响应式数据
 const mapConfig = reactive<MapConfig>({
-  center: [30.2084, 120.2120], // 默认杭州
+  center: [29.5630, 106.5516], // 重庆（默认兜底）
   zoom: 13,
-  layerType: 'vec',
+  layerType: 'img',
   actionId: 0,
   actionType: 'init'
 });
 
+// 返回上一页
+const goBack = () => {
+  uni.navigateBack();
+};
+
+// 提示占位
+const toast = (name: string) => {
+  uni.showToast({ title: `点击了: ${name}`, icon: 'none' });
+};
+
 // === 核心功能：获取定位 ===
 const locateUser = () => {
-  statusText.value = '正在获取定位...';
-  
+  uni.showLoading({ title: '定位中...' });
   uni.getLocation({
-    type: 'wgs84', // 重要：使用 wgs84 坐标系以匹配 Leaflet/天地图
+    type: 'wgs84',
     success: (res) => {
-      console.log('定位成功:', res);
-      statusText.value = `定位成功: ${res.latitude.toFixed(4)}, ${res.longitude.toFixed(4)}`;
-      
-      // 更新地图配置，触发 RenderJS
+      uni.hideLoading();
       mapConfig.center = [res.latitude, res.longitude];
-      mapConfig.zoom = 16; // 定位成功后自动放大
-      mapConfig.actionType = 'locate'; // 告诉 RenderJS 这是一个定位动作
+      mapConfig.zoom = 16;
+      mapConfig.actionType = 'locate';
       mapConfig.actionId++;
     },
     fail: (err) => {
-      console.error('定位失败', err);
-      statusText.value = '定位失败，请检查手机GPS权限';
-      
-      // 提示用户
-      uni.showToast({
-        title: '获取定位失败',
-        icon: 'none'
-      });
+      uni.hideLoading();
+      uni.showToast({ title: '获取定位失败', icon: 'none' });
     }
   });
 };
@@ -110,14 +151,74 @@ const toggleLayer = () => {
 
 const handleMapMessage = (data: any) => {
   if (data.type === 'click') {
-    statusText.value = `点击坐标: ${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}`;
+    console.log(`点击坐标: ${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}`);
+    if (isFabOpen.value) {
+      isFabOpen.value = false;
+    }
   }
+};
+
+// === 底部悬浮菜单逻辑 ===
+const isFabOpen = ref(false);
+
+const fabItems = [
+  { name: '变电站', path: 'substation' },
+  { name: '杆塔', path: 'tower' },
+  { name: '电缆拐点', path: 'cable' },
+  { name: '变压器', path: 'transformer' },
+  { name: '计量信息', path: 'meter' },
+  { name: '站房', path: 'station' }
+];
+
+const toggleFab = () => {
+  isFabOpen.value = !isFabOpen.value;
+};
+
+const getFabItemStyle = (index: number) => {
+  if (!isFabOpen.value) {
+    return {
+      transform: 'translate(0, 0) scale(0.5)',
+      opacity: 0,
+      pointerEvents: 'none'
+    };
+  }
+
+  const total = fabItems.length;
+  const angle = (Math.PI / (total - 1)) * index;
+  const radius = 110;
+
+  const x = -Math.cos(angle) * radius;
+  const y = -Math.sin(angle) * radius;
+
+  return {
+    transform: `translate(${x}px, ${y}px) scale(1)`,
+    opacity: 1,
+    pointerEvents: 'auto'
+  };
+};
+
+const handleFabClick = (item: any) => {
+  isFabOpen.value = false;
+  uni.showToast({ title: `跳转至: ${item.name}`, icon: 'none' });
 };
 
 onLoad(() => {
   uni.$on('map-message', handleMapMessage);
-  // 页面加载后自动定位一次（可选）
-  // locateUser(); 
+  uni.showLoading({ title: '定位中...' });
+  uni.getLocation({
+    type: 'wgs84',
+    success: (res) => {
+      uni.hideLoading();
+      mapConfig.center = [res.latitude, res.longitude];
+      mapConfig.zoom = 16;
+      mapConfig.actionType = 'initLocate';
+      mapConfig.actionId++;
+    },
+    fail: () => {
+      uni.hideLoading();
+      uni.showToast({ title: '获取定位失败', icon: 'none' });
+    }
+  });
 });
 
 onUnmounted(() => {
@@ -143,22 +244,34 @@ export default {
     return {
       map: null,
       layers: {},
-      locationMarker: null, // 用于存储定位点
-	  // key
-      tdtKey: 'a30fe8f02deafbdc08192aa8f81c0044', 
+      locationMarker: null,
+      tdtKey: 'a30fe8f02deafbdc08192aa8f81c0044',
+      pendingConfig: null
     }
   },
   mounted() {
-    // 动态加载 Leaflet
+    // ✅ 拼接正确的基础路径（兼容 H5 和 App 端）
+    const basePath = window.location.protocol + '//' + window.location.host;
+    // App端实际路径可能类似 file:///android_asset/...
+    
+    const getRealPath = (path) => {
+    // #ifdef APP-PLUS
+    return plus.io.convertLocalFileSystemURL('_www' + path);
+    // #endif
+    // #ifdef H5
+    return path;
+    // #endif
+    };
+    
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    link.href = getRealPath('/static/leaflet/leaflet.css');
     document.head.appendChild(link);
-
+    
     const script = document.createElement('script');
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.src = getRealPath('/static/leaflet/leaflet.js');
     script.onload = () => {
-      this.initMap();
+    this.initMap();
     };
     document.head.appendChild(script);
   },
@@ -166,59 +279,84 @@ export default {
     initMap() {
       if (!window.L || !this.tdtKey) return;
       
+      const initialCenter = (this.pendingConfig && this.pendingConfig.center)
+      ? this.pendingConfig.center
+      : [29.5630, 106.5516];
+      const initialZoom = (this.pendingConfig && this.pendingConfig.zoom)
+      ? this.pendingConfig.zoom
+      : 13;
+      
       this.map = L.map('map', {
-        zoomControl: false, 
-        attributionControl: false
-      }).setView([30.2084, 120.2120], 13);
-
-      this.updateLayers('vec');
-
+      zoomControl: false,
+      attributionControl: false
+      }).setView(initialCenter, initialZoom);
+      
+      this.updateLayers((this.pendingConfig && this.pendingConfig.layerType) || 'vec');
+      
       this.map.on('click', (e) => {
-        this.$ownerInstance.callMethod('receiveRenderData', {
-          type: 'click',
-          lat: e.latlng.lat,
-          lng: e.latlng.lng
-        });
+      this.$ownerInstance.callMethod('receiveRenderData', {
+      type: 'click',
+      lat: e.latlng.lat,
+      lng: e.latlng.lng
       });
+      });
+      
+      if (this.pendingConfig) {
+      if (this.pendingConfig.actionType === 'initLocate' || this.pendingConfig.actionType === 'locate') {
+      this.drawLocationMarker(this.pendingConfig.center);
+      }
+      this.pendingConfig = null;
+      }
+    },
+
+    applyConfig(config, isFlyTo = true) {
+      if (!this.map || !config) return;
+
+      if (config.actionType === 'initLocate') {
+        this.map.setView(config.center, config.zoom);
+        this.drawLocationMarker(config.center);
+      }
+      else if (config.actionType === 'locate') {
+        this.map.flyTo(config.center, config.zoom);
+        this.drawLocationMarker(config.center);
+      }
+      else if (config.actionType === 'zoom') {
+        this.map.setZoom(config.zoom);
+      }
+      else if (config.actionType === 'layer') {
+        this.updateLayers(config.layerType);
+      }
     },
 
     updateMapConfig(newValue, oldValue) {
-      if (!this.map || !newValue) return;
+      if (!newValue) return;
 
-      // === 处理定位 ===
-      if (newValue.actionType === 'locate') {
-        // 1. 飞到当前位置
-        this.map.flyTo(newValue.center, newValue.zoom);
-        
-        // 2. 绘制定位点 (蓝色圆点)
-        this.drawLocationMarker(newValue.center);
+      if (!this.map) {
+        this.pendingConfig = {
+          center: newValue.center ? [newValue.center[0], newValue.center[1]] : null,
+          zoom: newValue.zoom,
+          layerType: newValue.layerType,
+          actionId: newValue.actionId,
+          actionType: newValue.actionType
+        };
+        return;
       }
-      // === 处理普通缩放 ===
-      else if (newValue.actionType === 'zoom') {
-        this.map.setZoom(newValue.zoom);
-      }
-      // === 处理图层切换 ===
-      else if (newValue.actionType === 'layer') {
-        this.updateLayers(newValue.layerType);
-      }
+
+      this.applyConfig(newValue);
     },
 
     drawLocationMarker(center) {
-      // 如果已经有定位点，先移除
       if (this.locationMarker) {
         this.map.removeLayer(this.locationMarker);
       }
-
-      // 创建一个漂亮的蓝色定位点
       this.locationMarker = L.circleMarker(center, {
-        color: '#fff',       // 边框白色
-        fillColor: '#2A85FF', // 填充蓝色
+        color: '#fff',
+        fillColor: '#2A85FF',
         fillOpacity: 1,
-        radius: 8,           // 半径
-        weight: 2            // 边框宽度
+        radius: 8,
+        weight: 2
       }).addTo(this.map);
       
-      // 再加一个半透明的光晕效果
       L.circleMarker(center, {
         color: '#2A85FF',
         fillColor: '#2A85FF',
@@ -249,13 +387,191 @@ export default {
 }
 </script>
 
-<style>
-.content { display: flex; flex-direction: column; width: 100%; height: 100vh; overflow: hidden; }
-.map-container { flex: 1; width: 100%; background-color: #eee; }
-.controls-panel { height: 200px; background-color: #ffffff; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); padding: 15px; display: flex; flex-direction: column; z-index: 999; }
-.info-box { margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-.title { font-weight: bold; font-size: 16px; }
-.desc { font-size: 12px; color: #666; margin-top: 4px; display: block;}
-.btn-group { display: flex; gap: 10px; }
-.btn { flex: 1; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+<style scoped>
+.content {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 自定义导航栏 */
+.custom-nav {
+  height: 44px;
+  padding-top: var(--status-bar-height, 44px);
+  background-color: #006567;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 15px;
+  padding-right: 15px;
+  z-index: 999;
+}
+
+.nav-left {
+  width: 40px;
+}
+
+.back-icon {
+  color: #fff;
+  font-size: 24px;
+  font-weight: 300;
+}
+
+.nav-title {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.nav-right {
+  width: 40px;
+}
+
+/* 地图容器 */
+.map-container {
+  flex: 1;
+  width: 100%;
+  background-color: #f5f5f5;
+}
+
+/* 右侧悬浮工具栏 */
+.right-tools {
+  position: absolute;
+  right: 15px;
+  top: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  z-index: 900;
+}
+
+.tool-group {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tool-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.tool-item:last-child {
+  border-bottom: none;
+}
+
+.tool-item:active {
+  background-color: #f5f5f5;
+}
+
+.tool-item .icon {
+  font-size: 18px;
+  margin-bottom: 2px;
+  color: #333;
+}
+
+.tool-item .text {
+  font-size: 10px;
+  color: #666;
+}
+
+.zoom-btn {
+  padding: 8px 12px;
+}
+
+.zoom-btn .icon {
+  font-size: 22px;
+  margin-bottom: 0;
+  color: #333;
+  font-weight: 300;
+}
+
+/* 底部中间悬浮菜单 */
+.bottom-fab-wrapper {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 950;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* 主按钮 */
+.fab-main {
+  width: 60px;
+  height: 60px;
+  background-color: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2;
+}
+
+.fab-main:active {
+  background-color: #f9f9f9;
+}
+
+.fab-main-icon {
+  font-size: 32px;
+  color: #666;
+  font-weight: 300;
+  transition: transform 0.3s ease;
+}
+
+.fab-main-icon.is-open {
+  transform: rotate(45deg);
+}
+
+/* 展开子菜单 */
+.fab-menu {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
+.fab-sub-item {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 50px;
+  height: 50px;
+  margin-top: -25px;
+  margin-left: -25px;
+  background-color: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.fab-sub-item:active {
+  background-color: #f0f0f0;
+}
+
+.sub-text {
+  font-size: 10px;
+  color: #333;
+  text-align: center;
+  line-height: 1.2;
+  padding: 0 4px;
+}
 </style>

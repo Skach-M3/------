@@ -1,54 +1,13 @@
+//db/init.js
 import { dbHelper } from './dbHelper'
 
 export async function initDatabase() {
-  const isOpen = plus.sqlite.isOpenDatabase({
-    name: 'collector',
-    path: '_doc/collector.db'
-  })
-
-  if (!isOpen) {
-    plus.sqlite.openDatabase({
-      name: 'collector',
-      path: '_doc/collector.db'
-    })
-  }
-  // 先打开数据库
   plus.sqlite.openDatabase({
     name: 'collector',
     path: '_doc/collector.db'
   })
 
-  // 建表
-  await dbHelper.execute(`
-    CREATE TABLE IF NOT EXISTS t_task (
-      id          TEXT PRIMARY KEY,
-      name        TEXT NOT NULL,
-      type        TEXT NOT NULL,
-      line_name   TEXT,
-      area_name   TEXT,
-      created_at  INTEGER NOT NULL,
-      updated_at  INTEGER NOT NULL,
-      status      TEXT DEFAULT 'active'
-    )
-  `)
-
-  await dbHelper.execute(`
-    CREATE TABLE IF NOT EXISTS t_device (
-      id          TEXT PRIMARY KEY,
-      task_id     TEXT NOT NULL,
-      device_type TEXT NOT NULL,
-      name        TEXT,
-      longitude   REAL,
-      latitude    REAL,
-      parent_id   TEXT,
-      attributes  TEXT DEFAULT '{}',
-      photos      TEXT DEFAULT '[]',
-      status      TEXT DEFAULT 'draft',
-      created_at  INTEGER NOT NULL,
-      updated_at  INTEGER NOT NULL
-    )
-  `)
-
+  // 线路表
   await dbHelper.execute(`
     CREATE TABLE IF NOT EXISTS t_line (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,6 +17,34 @@ export async function initDatabase() {
       recorder      TEXT DEFAULT '',
       created_date  TEXT DEFAULT ''
     )
+  `)
+
+  // 设备表（通用）
+  await dbHelper.execute(`
+    CREATE TABLE IF NOT EXISTS t_device (
+      id          TEXT PRIMARY KEY,
+      line_id     INTEGER NOT NULL,
+      device_type TEXT NOT NULL,
+      name        TEXT,
+      longitude   REAL,
+      latitude    REAL,
+      prev_id     TEXT,
+      parent_id   TEXT,
+      sort_order  INTEGER DEFAULT 0,
+      attributes  TEXT DEFAULT '{}',
+      photos      TEXT DEFAULT '{}',
+      status      TEXT DEFAULT 'draft',
+      created_at  INTEGER NOT NULL,
+      updated_at  INTEGER NOT NULL
+    )
+  `)
+
+  // 索引：按线路查设备是最常见的查询
+  await dbHelper.execute(`
+    CREATE INDEX IF NOT EXISTS idx_device_line ON t_device(line_id)
+  `)
+  await dbHelper.execute(`
+    CREATE INDEX IF NOT EXISTS idx_device_parent ON t_device(parent_id)
   `)
 
   console.log('=== 数据库初始化完成 ===')

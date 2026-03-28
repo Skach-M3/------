@@ -224,9 +224,31 @@ export default {
       type: 'auto-calc',
       calcType: 'distance_from_prev',
       decimal: 2,
-      editable: true,
+      editable: false,
       exportOrder: 14,
       exportLabel: '档距/m'
+    },
+    {
+      key: 'longitude',
+      label: '经度',
+      group: '附属设备与其他',
+      type: 'auto-calc',
+      calcType: '',
+      decimal: 8,
+      editable: false,
+      exportOrder: 15,
+      exportLabel: '经度'
+    },
+    {
+      key: 'latitude',
+      label: '纬度',
+      group: '附属设备与其他',
+      type: 'auto-calc',
+      calcType: '',
+      decimal: 8,
+      editable: false,
+      exportOrder: 16,
+      exportLabel: '纬度'
     }
   ],
 

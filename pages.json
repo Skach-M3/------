@@ -22,8 +22,7 @@
 		{
 			"path": "pages/line/edit",
 			"style": {
-				"navigationBarTitleText": "",
-				"navigationStyle": "custom"
+				"navigationBarTitleText": "填写设备信息"
 			}
 		},
 		{
@@ -34,10 +33,7 @@
 			}
 		},
 		{
-			"path": "/components/SchemaForm",
-			"style": {
-				"navigationStyle": "custom"
-			}
+			"path": "/components/SchemaForm"
 		}
 	],
 	"globalStyle": {

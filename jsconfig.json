@@ -1,0 +1,23 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "Node",
+        "baseUrl": ".",
+        "paths": {
+            "@/*": [
+                "./*"
+            ]
+        }
+    },
+    "include": [
+        "pages/**/*",
+        "components/**/*",
+        "utils/**/*",
+        "dao/**/*",
+        "db/**/*",
+        "schema/**/*",
+        "App.vue",
+        "main.js"
+    ]
+}

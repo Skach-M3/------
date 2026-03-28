@@ -1,26 +1,6 @@
 <template>
   <view class="page">
 
-    <!-- 定位信息卡片 -->
-    <view class="card">
-      <view class="card-header">
-        <text class="card-title">定位信息</text>
-      </view>
-      <view class="gps-content">
-        <view class="gps-row">
-          <text class="gps-label">经度</text>
-          <text class="gps-value">{{ longitude || '未定位' }}</text>
-        </view>
-        <view class="gps-row">
-          <text class="gps-label">纬度</text>
-          <text class="gps-value">{{ latitude || '未定位' }}</text>
-        </view>
-      </view>
-      <button class="loc-btn" @click="getLocation">
-        <text class="loc-btn-text">{{ longitude ? '重新定位' : '获取定位' }}</text>
-      </button>
-    </view>
-
     <!-- 属性表单卡片 -->
     <view class="card">
       <view class="card-header">
@@ -74,6 +54,8 @@ export default {
       // 定位
       longitude: '',
       latitude: '',
+      prevLongitude: '',
+      prevLatitude: '',
 
       // 表单数据
       attributes: {},
@@ -135,12 +117,28 @@ export default {
         this.parentId = device.parent_id || ''
         this.prevId = device.prev_id || ''
         this.sortOrder = device.sort_order || 1
-        // attributes 在数据库中以 JSON 字符串存储
         this.attributes = device.attributes
           ? (typeof device.attributes === 'string'
             ? JSON.parse(device.attributes)
             : device.attributes)
           : {}
+
+        // 加载上一个设备的坐标，用于档距计算
+        if (this.prevId) {
+          try {
+            const prevDevice = await deviceDAO.findById(this.prevId)
+            if (prevDevice) {
+              this.prevLongitude = prevDevice.longitude || ''
+              this.prevLatitude = prevDevice.latitude || ''
+            }
+          } catch (e) {
+            console.warn('加载上一设备失败:', e)
+          }
+        }
+
+        // 将坐标同步到表单属性并计算档距
+        this.syncCoordsToAttributes()
+        this.calcSpanLength()
       } catch (e) {
         console.error('加载设备失败:', e)
         uni.showToast({ title: '加载失败', icon: 'none' })
@@ -162,6 +160,8 @@ export default {
         if (lastDevice) {
           this.prevId = lastDevice.id
           this.sortOrder = (lastDevice.sort_order || 0) + 1
+          this.prevLongitude = lastDevice.longitude || ''
+          this.prevLatitude = lastDevice.latitude || ''
         } else {
           this.prevId = ''
           this.sortOrder = 1
@@ -169,11 +169,15 @@ export default {
 
         this.attributes = {}
 
-        // 等待 SchemaForm 渲染完成后填入默认值
         this.$nextTick(() => {
           if (this.$refs.formRef) {
             this.$refs.formRef.initDefaults()
           }
+          // 等 initDefaults 的 emit 生效后再同步坐标
+          this.$nextTick(() => {
+            this.syncCoordsToAttributes()
+            this.calcSpanLength()
+          })
         })
       } catch (e) {
         console.error('初始化新设备失败:', e)
@@ -188,6 +192,8 @@ export default {
         success: (res) => {
           this.longitude = res.longitude.toFixed(6)
           this.latitude = res.latitude.toFixed(6)
+          this.syncCoordsToAttributes()
+          this.calcSpanLength()
           uni.showToast({ title: '定位成功', icon: 'success' })
         },
         fail: (err) => {
@@ -195,6 +201,48 @@ export default {
           uni.showToast({ title: '定位失败，请检查权限', icon: 'none' })
         }
       })
+    },
+
+    /** 将经纬度同步到表单 attributes（供 schema 中 auto-calc 字段显示） */
+    syncCoordsToAttributes() {
+      this.attributes = {
+        ...this.attributes,
+        longitude: this.longitude,
+        latitude: this.latitude
+      }
+    },
+
+    /** 计算档距：当前设备与上一设备之间的直线距离（米） */
+    calcSpanLength() {
+      if (!this.longitude || !this.latitude || !this.prevLongitude || !this.prevLatitude) {
+        return
+      }
+      const dist = this.haversineDistance(
+        parseFloat(this.prevLatitude),
+        parseFloat(this.prevLongitude),
+        parseFloat(this.latitude),
+        parseFloat(this.longitude)
+      )
+      this.attributes = {
+        ...this.attributes,
+        span_length: dist.toFixed(2)
+      }
+    },
+
+    /**
+     * Haversine 公式计算两点间球面距离（米）
+     */
+    haversineDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371000
+      const toRad = (deg) => deg * Math.PI / 180
+      const dLat = toRad(lat2 - lat1)
+      const dLon = toRad(lon2 - lon1)
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2)
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+      return R * c
     },
 
     /* ========== 保存 ========== */
@@ -260,6 +308,7 @@ export default {
   background: #f5f6f7;
   padding: 20rpx;
   padding-bottom: 140rpx;
+  padding-top: calc(var(--status-bar-height) + 10rpx);
 }
 
 /* ---- 卡片 ---- */
@@ -271,6 +320,10 @@ export default {
 }
 
 .card-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 20rpx;
 }
 
@@ -278,50 +331,6 @@ export default {
   font-size: 32rpx;
   font-weight: bold;
   color: #333;
-}
-
-/* ---- 定位 ---- */
-.gps-content {
-  margin-bottom: 20rpx;
-}
-
-.gps-row {
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12rpx 0;
-}
-
-.gps-label {
-  font-size: 28rpx;
-  color: #666;
-}
-
-.gps-value {
-  font-size: 28rpx;
-  color: #333;
-}
-
-.loc-btn {
-  width: 100%;
-  height: 72rpx;
-  line-height: 72rpx;
-  text-align: center;
-  background: #f0f7ff;
-  border: 1rpx solid #2979ff;
-  border-radius: 8rpx;
-  padding: 0;
-  margin: 0;
-}
-
-.loc-btn::after {
-  border: none;
-}
-
-.loc-btn-text {
-  font-size: 28rpx;
-  color: #2979ff;
 }
 
 /* ---- 子设备入口 ---- */

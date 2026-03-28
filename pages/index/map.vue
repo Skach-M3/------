@@ -10,7 +10,8 @@
     </view>
 
     <!-- 地图容器 -->
-    <view id="map" class="map-container" :prop="mapConfig" :change:prop="mapModule.updateMapConfig"></view>
+    <view id="map" class="map-container" :prop="mapConfig" :change:prop="mapModule.updateMapConfig"
+      :devicesProp="devicesProp" :change:devicesProp="mapModule.onDevicesChange"></view>
 
     <!-- 右侧悬浮工具栏 -->
     <view class="right-tools">
@@ -78,8 +79,9 @@
 
 <!-- 1. 逻辑层 -->
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue';
-import { onLoad } from '@dcloudio/uni-app';
+import { ref, reactive, onUnmounted } from 'vue';
+import { onLoad, onShow } from '@dcloudio/uni-app'; // ← 新增 onShow
+import deviceDAO from '@/dao/deviceDAO.js'; // ← 新增
 
 interface MapConfig {
   center: [number, number];
@@ -97,6 +99,9 @@ const mapConfig = reactive<MapConfig>({
   actionId: 0,
   actionType: 'init'
 });
+
+// 设备列表，独立 prop 传递给 RenderJS，避免与 mapConfig 变更批处理冲突
+const devicesProp = ref<any[]>([]);
 
 // 返回上一页
 const goBack = () => {
@@ -120,7 +125,7 @@ const locateUser = () => {
       mapConfig.actionType = 'locate';
       mapConfig.actionId++;
     },
-    fail: (err) => {
+    fail: () => {
       uni.hideLoading();
       uni.showToast({ title: '获取定位失败', icon: 'none' });
     }
@@ -162,12 +167,12 @@ const handleMapMessage = (data: any) => {
 const isFabOpen = ref(false);
 
 const fabItems = [
-  { name: '变电站', path: 'substation' },
-  { name: '杆塔', path: 'tower' },
-  { name: '电缆拐点', path: 'cable' },
-  { name: '变压器', path: 'transformer' },
-  { name: '计量信息', path: 'meter' },
-  { name: '站房', path: 'station' }
+  { name: '变电站', deviceType: 'substation' },
+  { name: '杆塔', deviceType: 'pole' },
+  { name: '电缆拐点', deviceType: 'cable' },
+  { name: '变压器', deviceType: 'transformer' },
+  { name: '计量信息', deviceType: 'meter' },
+  { name: '站房', deviceType: 'station' }
 ];
 
 const toggleFab = () => {
@@ -197,26 +202,34 @@ const getFabItemStyle = (index: number) => {
   };
 };
 
+// ← 修改：跳转到设备编辑页
 const handleFabClick = (item: any) => {
   isFabOpen.value = false;
-  // 获取当前地图中心点坐标，传递给目标页面
   const [lat, lng] = mapConfig.center;
-
-  const url = `/components/SchemaForm?lineId=${lineId.value}&type=${item.path}&name=${encodeURIComponent(item.name)}&lat=${lat}&lng=${lng}`;
+  const url = `/pages/device/edit?lineId=${lineId.value}&deviceType=${item.deviceType}&lat=${Number(lat).toFixed(6)}&lng=${Number(lng).toFixed(6)}`;
 
   uni.navigateTo({
     url,
     fail: (err) => {
       console.error('跳转失败:', err);
-      uni.showToast({ title: `页面不存在: ${item.path}`, icon: 'none' });
+      uni.showToast({ title: '页面跳转失败', icon: 'none' });
     }
   });
+};
+
+const loadDevices = async () => {
+  try {
+    const devices = await deviceDAO.findAllByLine(lineId.value);
+    // 直接赋值给独立 ref，触发 renderjs 的 onDevicesChange
+    devicesProp.value = devices || [];
+  } catch (e) {
+    console.error('加载设备列表失败:', e);
+  }
 };
 
 const lineId = ref('');
 
 onLoad((options) => {
-  // 接收路由参数
   if (options && options.lineId) {
     lineId.value = options.lineId;
   }
@@ -237,6 +250,11 @@ onLoad((options) => {
       uni.showToast({ title: '获取定位失败', icon: 'none' });
     }
   });
+});
+
+// ← 新增：每次页面显示时重新加载设备（包括从编辑页返回时）
+onShow(() => {
+  loadDevices();
 });
 
 onUnmounted(() => {
@@ -263,71 +281,86 @@ export default {
       map: null,
       layers: {},
       locationMarker: null,
+      deviceLayerGroup: null,   // ← 新增：设备图层组
+      pendingDevices: null,     // ← 新增：地图未就绪时暂存设备数据
       tdtKey: 'a30fe8f02deafbdc08192aa8f81c0044',
       pendingConfig: null
     }
   },
   mounted() {
-    // ✅ 拼接正确的基础路径（兼容 H5 和 App 端）
-    const basePath = window.location.protocol + '//' + window.location.host;
-    // App端实际路径可能类似 file:///android_asset/...
-    
+    // ← 新增：注入设备标记和标签的自定义样式
+    const style = document.createElement('style');
+    style.textContent = `
+      .device-marker-wrapper {
+      background: transparent !important;
+      border: none !important;
+      overflow: visible !important;
+      }
+    `;
+    document.head.appendChild(style);
+
     const getRealPath = (path) => {
-    // #ifdef APP-PLUS
-    return plus.io.convertLocalFileSystemURL('_www' + path);
-    // #endif
-    // #ifdef H5
-    return path;
-    // #endif
+      // #ifdef APP-PLUS
+      return plus.io.convertLocalFileSystemURL('_www' + path);
+      // #endif
+      // #ifdef H5
+      return path;
+      // #endif
     };
-    
+
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = getRealPath('/static/leaflet/leaflet.css');
     document.head.appendChild(link);
-    
+
     const script = document.createElement('script');
     script.src = getRealPath('/static/leaflet/leaflet.js');
     script.onload = () => {
-    this.initMap();
+      this.initMap();
     };
     document.head.appendChild(script);
   },
   methods: {
     initMap() {
       if (!window.L || !this.tdtKey) return;
-      
+
       const initialCenter = (this.pendingConfig && this.pendingConfig.center)
-      ? this.pendingConfig.center
-      : [29.5630, 106.5516];
+        ? this.pendingConfig.center
+        : [29.5630, 106.5516];
       const initialZoom = (this.pendingConfig && this.pendingConfig.zoom)
-      ? this.pendingConfig.zoom
-      : 13;
-      
+        ? this.pendingConfig.zoom
+        : 13;
+
       this.map = L.map('map', {
-      zoomControl: false,
-      attributionControl: false
+        zoomControl: false,
+        attributionControl: false
       }).setView(initialCenter, initialZoom);
-      
-      this.updateLayers((this.pendingConfig && this.pendingConfig.layerType) || 'vec');
-      
+
+      this.updateLayers((this.pendingConfig && this.pendingConfig.layerType) || 'img');
+
       this.map.on('click', (e) => {
-      this.$ownerInstance.callMethod('receiveRenderData', {
-      type: 'click',
-      lat: e.latlng.lat,
-      lng: e.latlng.lng
+        this.$ownerInstance.callMethod('receiveRenderData', {
+          type: 'click',
+          lat: e.latlng.lat,
+          lng: e.latlng.lng
+        });
       });
-      });
-      
+
       if (this.pendingConfig) {
-      if (this.pendingConfig.actionType === 'initLocate' || this.pendingConfig.actionType === 'locate') {
-      this.drawLocationMarker(this.pendingConfig.center);
+        if (this.pendingConfig.actionType === 'initLocate' || this.pendingConfig.actionType === 'locate') {
+          this.drawLocationMarker(this.pendingConfig.center);
+        }
+        this.pendingConfig = null;
       }
-      this.pendingConfig = null;
+
+      // ← 新增：地图初始化完成后，绘制已暂存的设备数据
+      if (this.pendingDevices) {
+        this.drawDevices(this.pendingDevices);
+        this.pendingDevices = null;
       }
     },
 
-    applyConfig(config, isFlyTo = true) {
+    applyConfig(config) {
       if (!this.map || !config) return;
 
       if (config.actionType === 'initLocate') {
@@ -363,6 +396,15 @@ export default {
       this.applyConfig(newValue);
     },
 
+    /** 设备数据变化时触发（独立 prop 通道） */
+    onDevicesChange(newValue) {
+      if (this.map) {
+      this.drawDevices(newValue || []);
+      } else {
+      this.pendingDevices = newValue;
+      }
+    },
+
     drawLocationMarker(center) {
       if (this.locationMarker) {
         this.map.removeLayer(this.locationMarker);
@@ -374,7 +416,7 @@ export default {
         radius: 8,
         weight: 2
       }).addTo(this.map);
-      
+
       L.circleMarker(center, {
         color: '#2A85FF',
         fillColor: '#2A85FF',
@@ -382,6 +424,146 @@ export default {
         radius: 15,
         weight: 0
       }).addTo(this.map);
+    },
+
+    /**
+    * 绘制设备标记和连线
+    * Marker 样式：蓝色圆角矩形气泡 + 底部三角箭头 + 内嵌 SVG 图标 + 右侧名称标签
+    */
+    drawDevices(devices) {
+    // 清除旧图层
+      if (this.deviceLayerGroup) {
+        this.map.removeLayer(this.deviceLayerGroup);
+        this.deviceLayerGroup = null;
+      }
+      if (!devices || devices.length === 0) return;
+    
+      this.deviceLayerGroup = L.layerGroup().addTo(this.map);
+      var lineCoords = [];
+    
+      for (var i = 0; i < devices.length; i++) { 
+        var device=devices[i];
+        var lat=parseFloat(device.latitude);
+        var lng=parseFloat(device.longitude); 
+        
+        if (isNaN(lat) || isNaN(lng) || (lat===0 && lng===0)) continue;
+        var latlng=[lat,lng];
+        var displayName=device.name || '未命名' ;
+        var svgHtml=this.getDeviceSvg(device.device_type);
+        var color='#3bbffb';
+        // 气泡容器 + 底部三角 + 右侧文字
+        var html=''
+          + '<div style="display:flex;align-items:flex-start;pointer-events:auto;">'
+          +  '<div style="'
+          +   'position:relative;'
+          +   'width:36px;height:36px;'
+          +   'background:' + color + ';'
+          +   'border-radius:8px;'
+          +   'display:flex;align-items:center;justify-content:center;'
+          +   'flex-shrink:0;'
+          +   'box-shadow:0 2px 6px rgba(0,0,0,0.35);'
+          +  '">'
+          +  svgHtml
+          +  '<div style="'
+          +   'position:absolute;bottom:-7px;left:50%;'
+          +   'transform:translateX(-50%);'
+          +   'width:0;height:0;'
+          +   'border-left:7px solid transparent;'
+          +   'border-right:7px solid transparent;'
+          +   'border-top:7px solid ' + color + ';'
+          +  '"></div>'
+          + '</div>'
+          // 右侧文字
+          + '<span style="'
+          +  'margin-left:6px;margin-top:6px;'
+          +  'white-space:nowrap;'
+          +  'color:#fff;font-size:12px;font-weight:bold;'
+          +  'text-shadow:'
+          +   '-1px -1px 0 #333,'
+          +   ' 1px -1px 0 #333,'
+          +   '-1px  1px 0 #333,'
+          +   ' 1px  1px 0 #333;'
+          +  '">' + displayName + '</span>'
+          + '</div>';
+        var icon=L.divIcon({ 
+          className: 'device-marker-wrapper',
+          html: html,
+          iconSize: [36, 43],
+          iconAnchor: [18, 43]
+        });
+        L.marker(latlng, { icon: icon }).addTo(this.deviceLayerGroup);
+        
+        // 仅顶层设备参与连线
+        if (!device.parent_id || device.parent_id === '' ) { 
+          lineCoords.push(latlng);
+        }
+      }
+
+      // 按 sort_order 顺序连线
+      if (lineCoords.length>= 2) {
+        L.polyline(lineCoords, {
+          color: '#006567',
+          weight: 3,
+          opacity: 0.8
+        }).addTo(this.deviceLayerGroup);
+      }
+    },
+    
+    /**
+    * 根据设备类型返回对应的 SVG 图标 HTML
+    * 可自行替换各类型的 path 数据
+    */
+    getDeviceSvg(deviceType) {
+      var svgs = {
+        'pole':
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 162 148">'
+            + '<path fill="#fff" d="'
+          + 'M150,90.9C144.1,114.3,130.1,130.5,108.5,139.7C97.5,144.3,85.9,145.9,73.7,144.3'
+          + 'C61.5,142.7,50.6,138.6,41,131.4C25.1,119.7,15.7,104.1,12.9,84.3'
+          + 'C10.1,65.1,14.9,47.7,26.4,32.7C37.8,17.7,53.3,8.4,72.7,5.8'
+          + 'C91.4,3.4,108.1,7.7,123.1,18.6C138.9,30.2,148.4,45.7,151.2,65.5'
+          + 'C152.4,74,151.8,82.2,150,90.9'
+          + 'M104.5,55.1C99.4,61,94.2,67,88.7,73.4C100.6,86.3,112.4,99.1,124.3,112'
+          + 'C145.6,88.7,141,51.4,121.9,36.4C116.2,42.4,110.6,48.5,104.5,55.1'
+          + 'M32.1,48.7C21.4,70.8,24.2,94.5,39.9,111.8C51.4,99.1,63,86.4,75,73.2'
+          + 'C63.9,60.8,52.9,48.5,41.3,35.5C38.1,40,35.3,44,32.1,48.7'
+          + 'M52.1,113.7C50.7,115.5,49.4,117.3,48,119C63.1,134.4,97.9,136.3,116.2,119.2'
+          + 'C110.7,112.8,105.2,106.4,99.6,100.1C93.9,93.8,88,87.5,81.8,80.8'
+          + 'C72,91.6,62.3,102.3,52.1,113.7'
+          + 'M89,57.5C97.3,48,105.6,38.5,113.9,28.9C95.9,14.7,64.7,15.9,50.1,29.3'
+          + 'C60.6,41.3,71.1,53.3,81.9,65.8C84.5,62.7,86.5,60.4,89,57.5z" />'
+            + '</svg>',
+        'transformer':
+          '<svg viewBox="0 0 24 24" width="20" height="20" fill="none">'
+          + '<circle cx="9" cy="12" r="5" stroke="#fff" stroke-width="1.5" />'
+          + '<circle cx="15" cy="12" r="5" stroke="#fff" stroke-width="1.5" />'
+          + '</svg>',
+        'substation':
+          '<svg viewBox="0 0 24 24" width="20" height="20" fill="none">'
+          + '<rect x="4" y="9" width="16" height="11" rx="1" stroke="#fff" stroke-width="1.5" />'
+          + '<path d="M4 9l8-5 8 5" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />'
+          + '<path d="M13 12l-2 3.5h3l-2 3.5" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />'
+          + '</svg>',
+        'cable':
+          '<svg viewBox="0 0 24 24" width="20" height="20" fill="none">'
+          + '<circle cx="12" cy="12" r="3" fill="#fff" />'
+          + '<path d="M4 12h5M15 12h5M12 4v5M12 15v5" stroke="#fff" stroke-width="1.5" stroke-linecap="round" />'
+          + '</svg>',
+        'meter':
+          '<svg viewBox="0 0 24 24" width="20" height="20" fill="none">'
+          + '<circle cx="12" cy="13" r="8" stroke="#fff" stroke-width="1.5" />'
+          + '<path d="M12 13l4-4" stroke="#fff" stroke-width="2" stroke-linecap="round" />'
+          + '<circle cx="12" cy="13" r="1.5" fill="#fff" />'
+          + '</svg>',
+        'station':
+          '<svg viewBox="0 0 24 24" width="20" height="20" fill="none">'
+          + '<path d="M3 12l9-7 9 7" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />'
+          + '<rect x="5" y="12" width="14" height="8" stroke="#fff" stroke-width="1.5" />'
+          + '<rect x="9" y="15" width="6" height="5" stroke="#fff" stroke-width="1.5" />'
+          + '</svg>'
+      };
+      return svgs[deviceType]
+        || '<svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="6" fill="#fff" /></svg>';
     },
 
     updateLayers(type) {
@@ -415,7 +597,6 @@ export default {
   position: relative;
 }
 
-/* 自定义导航栏 */
 .custom-nav {
   height: 44px;
   padding-top: var(--status-bar-height, 44px);
@@ -448,14 +629,12 @@ export default {
   width: 40px;
 }
 
-/* 地图容器 */
 .map-container {
   flex: 1;
   width: 100%;
   background-color: #f5f5f5;
 }
 
-/* 右侧悬浮工具栏 */
 .right-tools {
   position: absolute;
   right: 15px;
@@ -514,7 +693,6 @@ export default {
   font-weight: 300;
 }
 
-/* 底部中间悬浮菜单 */
 .bottom-fab-wrapper {
   position: absolute;
   bottom: 40px;
@@ -526,7 +704,6 @@ export default {
   align-items: center;
 }
 
-/* 主按钮 */
 .fab-main {
   width: 60px;
   height: 60px;
@@ -554,7 +731,6 @@ export default {
   transform: rotate(45deg);
 }
 
-/* 展开子菜单 */
 .fab-menu {
   position: absolute;
   width: 100%;

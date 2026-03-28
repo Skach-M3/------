@@ -10,8 +10,6 @@ const deviceDAO = {
 
     /**
      * 插入一条设备记录
-     * @param {Object} device - 设备数据（不含 id、时间戳）
-     * @returns {string} 新生成的设备 ID
      */
     async insert(device) {
         const id = generateId()
@@ -44,8 +42,6 @@ const deviceDAO = {
 
     /**
      * 更新设备记录
-     * @param {string} id - 设备 ID
-     * @param {Object} fields - 需要更新的字段
      */
     async update(id, fields) {
         const now = Date.now()
@@ -83,8 +79,6 @@ const deviceDAO = {
 
     /**
      * 根据 ID 查询单条设备
-     * @param {string} id
-     * @returns {Object|null}
      */
     async findById(id) {
         const sql = 'SELECT * FROM t_device WHERE id = ?'
@@ -93,11 +87,6 @@ const deviceDAO = {
 
     /**
      * 查询指定线路 + 设备类型 + 父设备下，排序号最大的一条记录
-     * 用于新建时确定 prevId 和 sortOrder
-     * @param {string} lineId
-     * @param {string} deviceType
-     * @param {string} parentId - 无父设备时传空字符串
-     * @returns {Object|null}
      */
     async findLastDevice(lineId, deviceType, parentId) {
         const sql = `SELECT * FROM t_device
@@ -109,11 +98,6 @@ const deviceDAO = {
 
     /**
      * 查询指定父设备下某类型的全部子设备（按排序号升序）
-     * 用于子设备列表展示
-     * @param {string} lineId
-     * @param {string} deviceType
-     * @param {string} parentId
-     * @returns {Array}
      */
     async findByParent(lineId, deviceType, parentId) {
         const sql = `SELECT * FROM t_device
@@ -124,10 +108,6 @@ const deviceDAO = {
 
     /**
      * 查询指定线路下某类型的全部设备（按排序号升序）
-     * 用于主设备列表展示（如线路下所有杆塔）
-     * @param {string} lineId
-     * @param {string} deviceType
-     * @returns {Array}
      */
     async findByLine(lineId, deviceType) {
         const sql = `SELECT * FROM t_device
@@ -136,16 +116,27 @@ const deviceDAO = {
         return await dbHelper.select(sql, [lineId, deviceType])
     },
 
+    // ← 新增：查询线路下所有设备（不区分类型），用于地图绘制
+    /**
+     * 查询指定线路下所有设备（按 sort_order、created_at 升序）
+     * 用于地图页绘制设备标记和连线
+     * @param {string} lineId
+     * @returns {Array}
+     */
+    async findAllByLine(lineId) {
+        const sql = `SELECT * FROM t_device
+      WHERE line_id = ?
+      ORDER BY sort_order ASC, created_at ASC`
+        return await dbHelper.select(sql, [lineId])
+    },
+
     /**
      * 删除设备（同时级联删除其子设备）
-     * @param {string} id
      */
     async deleteWithChildren(id) {
-        // 先删子设备
         await dbHelper.execute(
             'DELETE FROM t_device WHERE parent_id = ?', [id]
         )
-        // 再删自身
         await dbHelper.execute(
             'DELETE FROM t_device WHERE id = ?', [id]
         )

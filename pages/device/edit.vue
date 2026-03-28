@@ -100,7 +100,11 @@ export default {
     this.deviceId = query.deviceId || ''
     this.parentId = query.parentId || ''
 
-    // 根据设备类型加载对应 schema
+    // 接收地图页传来的坐标（WGS84），作为预填值
+    if (query.lat) this.latitude = query.lat
+    if (query.lng) this.longitude = query.lng
+
+    // 根据设备类型获取对应的 schema
     this.currentSchema = getSchema(this.deviceType)
 
     // 动态设置页面标题
@@ -180,7 +184,7 @@ export default {
 
     getLocation() {
       uni.getLocation({
-        type: 'gcj02',
+        type: 'wgs84',
         success: (res) => {
           this.longitude = res.longitude.toFixed(6)
           this.latitude = res.latitude.toFixed(6)
@@ -226,13 +230,14 @@ export default {
       try {
         if (this.deviceId) {
           await deviceDAO.update(this.deviceId, deviceData)
-          uni.showToast({ title: '保存成功', icon: 'success' })
         } else {
           const newId = await deviceDAO.insert(deviceData)
           this.deviceId = newId
           // 保存成功后 showChildren 会自动变为 true（如果 schema 有 children）
-          uni.showToast({ title: '保存成功', icon: 'success' })
         }
+        uni.showToast({ title: '保存成功', icon: 'success' })
+        // 延迟返回，让用户看到提示
+        setTimeout(() => { uni.navigateBack() }, 800)
       } catch (e) {
         console.error('保存失败:', e)
         uni.showToast({ title: '保存失败', icon: 'none' })

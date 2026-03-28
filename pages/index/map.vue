@@ -513,10 +513,10 @@ export default {
 
     /**
     * 绘制设备标记和连线
-    * Marker 样式：蓝色圆角矩形气泡 + 底部三角箭头 + 内嵌 SVG 图标 + 右侧名称标签
+    * Marker 样式：倒水滴状定位针 + 内嵌居中 SVG 图标 + 右侧名称标签
     */
     drawDevices(devices) {
-    // 清除旧图层
+      // 清除旧图层
       if (this.deviceLayerGroup) {
         this.map.removeLayer(this.deviceLayerGroup);
         this.deviceLayerGroup = null;
@@ -536,31 +536,35 @@ export default {
         var displayName=device.name || '未命名' ;
         var svgHtml=this.getDeviceSvg(device.device_type);
         var color='#3bbffb';
-        // 气泡容器 + 底部三角 + 右侧文字
-        var html=''
+        // 倒水滴气泡容器 + 右侧文字
+        var html = ''
           + '<div style="display:flex;align-items:flex-start;pointer-events:auto;">'
           +  '<div style="'
           +   'position:relative;'
-          +   'width:36px;height:36px;'
-          +   'background:' + color + ';'
-          +   'border-radius:8px;'
+          +   'width:28px;height:28px;'
           +   'display:flex;align-items:center;justify-content:center;'
           +   'flex-shrink:0;'
-          +   'box-shadow:0 2px 6px rgba(0,0,0,0.35);'
           +  '">'
-          +  svgHtml
-          +  '<div style="'
-          +   'position:absolute;bottom:-7px;left:50%;'
-          +   'transform:translateX(-50%);'
-          +   'width:0;height:0;'
-          +   'border-left:7px solid transparent;'
-          +   'border-right:7px solid transparent;'
-          +   'border-top:7px solid ' + color + ';'
-          +  '"></div>'
-          + '</div>'
+          +   '<!-- 倒水滴背景 -->'
+          +   '<div style="'
+          +    'position:absolute;top:0;left:0;width:100%;height:100%;'
+          +    'background:' + color + ';'
+          +    'border-radius:50% 50% 50% 0;'
+          +    'transform:rotate(-45deg);'
+          +    'box-shadow:-2px 2px 4px rgba(0,0,0,0.3);'
+          +   '"></div>'
+          +   '<!-- 居中图标 -->'
+          +   '<div style="'
+          +    'position:relative;z-index:1;'
+          +    'width:16px;height:16px;'
+          +    'display:flex;align-items:center;justify-content:center;'
+          +   '">'
+          +    svgHtml
+          +   '</div>'
+          +  '</div>'
           // 右侧文字
           + '<span style="'
-          +  'margin-left:6px;margin-top:6px;'
+          +  'margin-left:6px;margin-top:4px;'
           +  'white-space:nowrap;'
           +  'color:#fff;font-size:12px;font-weight:bold;'
           +  'text-shadow:'
@@ -573,8 +577,8 @@ export default {
         var icon=L.divIcon({ 
           className: 'device-marker-wrapper',
           html: html,
-          iconSize: [36, 43],
-          iconAnchor: [18, 43]
+          iconSize: [28, 34], // 整体尺寸缩小
+          iconAnchor: [14, 34] // 锚点对准水滴最底部的尖端
         });
         L.marker(latlng, { icon: icon }).addTo(this.deviceLayerGroup);
         
@@ -601,7 +605,7 @@ export default {
     getDeviceSvg(deviceType) {
       var svgs = {
         'pole':
-          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 162 148">'
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 162 148" width="16" height="16">'
             + '<path fill="#fff" d="'
           + 'M150,90.9C144.1,114.3,130.1,130.5,108.5,139.7C97.5,144.3,85.9,145.9,73.7,144.3'
           + 'C61.5,142.7,50.6,138.6,41,131.4C25.1,119.7,15.7,104.1,12.9,84.3'
@@ -619,36 +623,36 @@ export default {
           + 'C60.6,41.3,71.1,53.3,81.9,65.8C84.5,62.7,86.5,60.4,89,57.5z" />'
             + '</svg>',
         'transformer':
-          '<svg viewBox="0 0 24 24" width="20" height="20" fill="none">'
+          '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
           + '<circle cx="9" cy="12" r="5" stroke="#fff" stroke-width="1.5" />'
           + '<circle cx="15" cy="12" r="5" stroke="#fff" stroke-width="1.5" />'
           + '</svg>',
         'substation':
-          '<svg viewBox="0 0 24 24" width="20" height="20" fill="none">'
+          '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
           + '<rect x="4" y="9" width="16" height="11" rx="1" stroke="#fff" stroke-width="1.5" />'
           + '<path d="M4 9l8-5 8 5" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />'
           + '<path d="M13 12l-2 3.5h3l-2 3.5" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />'
           + '</svg>',
         'cable':
-          '<svg viewBox="0 0 24 24" width="20" height="20" fill="none">'
+          '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
           + '<circle cx="12" cy="12" r="3" fill="#fff" />'
           + '<path d="M4 12h5M15 12h5M12 4v5M12 15v5" stroke="#fff" stroke-width="1.5" stroke-linecap="round" />'
           + '</svg>',
         'meter':
-          '<svg viewBox="0 0 24 24" width="20" height="20" fill="none">'
+          '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
           + '<circle cx="12" cy="13" r="8" stroke="#fff" stroke-width="1.5" />'
           + '<path d="M12 13l4-4" stroke="#fff" stroke-width="2" stroke-linecap="round" />'
           + '<circle cx="12" cy="13" r="1.5" fill="#fff" />'
           + '</svg>',
         'station':
-          '<svg viewBox="0 0 24 24" width="20" height="20" fill="none">'
+          '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
           + '<path d="M3 12l9-7 9 7" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />'
           + '<rect x="5" y="12" width="14" height="8" stroke="#fff" stroke-width="1.5" />'
           + '<rect x="9" y="15" width="6" height="5" stroke="#fff" stroke-width="1.5" />'
           + '</svg>'
       };
       return svgs[deviceType]
-        || '<svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="6" fill="#fff" /></svg>';
+        || '<svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="6" fill="#fff" /></svg>';
     },
 
     updateLayers(type) {

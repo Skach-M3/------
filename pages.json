@@ -2,10 +2,6 @@
 	"pages": [
 		//pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
 		{
-			"path": "pages/test/test-poledb",
-			"navigationStyle": "custom"
-		},
-		{
 			"path": "pages/index/index",
 			"navigationStyle": "custom"
 		},
@@ -34,6 +30,12 @@
 			"path": "pages/index/map",
 			"style": {
 				"navigationBarTitleText": "",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "/components/SchemaForm",
+			"style": {
 				"navigationStyle": "custom"
 			}
 		}

@@ -35,7 +35,7 @@ export default {
       key: 'pole_material',
       label: '杆塔材质',
       group: '基础信息',
-      type: 'radio',
+      type: 'select',
       required: true,
       options: [
         { label: '水泥杆', value: '水泥杆' },
@@ -52,7 +52,7 @@ export default {
       key: 'pole_nature',
       label: '杆塔性质',
       group: '基础信息',
-      type: 'radio',
+      type: 'select',
       required: true,
       options: [
         { label: '直线', value: '直线' },
@@ -69,7 +69,7 @@ export default {
       key: 'wire_arrangement',
       label: '导线排列方式',
       group: '导线信息',
-      type: 'radio',
+      type: 'select',
       options: [
         { label: '水平', value: '水平' },
         { label: '三角', value: '三角' },
@@ -82,7 +82,7 @@ export default {
       key: 'wire_erection_way',
       label: '导线架设方式',
       group: '导线信息',
-      type: 'radio',
+      type: 'select',
       options: [
         { label: '架空', value: '架空' },
         { label: '地埋', value: '地埋' },
@@ -96,7 +96,7 @@ export default {
       key: 'wire_circuit_count',
       label: '导线回路数',
       group: '导线信息',
-      type: 'radio',
+      type: 'select',
       options: [
         { label: '单回', value: '单回' },
         { label: '双回', value: '双回' },
@@ -113,7 +113,7 @@ export default {
       key: 'wire_circuit_position',
       label: '导线回路位置',
       group: '导线信息',
-      type: 'radio',
+      type: 'select',
       options: [
         { label: '中回', value: '中回' },
         { label: '左回', value: '左回' },
@@ -133,7 +133,7 @@ export default {
       key: 'wire_type',
       label: '导线类型',
       group: '导线信息',
-      type: 'radio',
+      type: 'select',
       options: [
         { label: '绝缘导线', value: '绝缘导线' },
         { label: '裸导线', value: '裸导线' },

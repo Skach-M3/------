@@ -57,7 +57,7 @@
 			</view>
 
 			<!-- 3. 采集任务区 (数据驱动) -->
-			<view class="card-box">
+			<!-- <view class="card-box">
 				<view class="card-title">采集任务</view>
 				<view class="task-list">
 					<view class="task-item" v-for="task in taskList" :key="task.id">
@@ -81,7 +81,7 @@
 						</view>
 					</view>
 				</view>
-			</view>
+			</view> -->
 
 			<view class="bottom-spacer"></view>
 		</scroll-view>

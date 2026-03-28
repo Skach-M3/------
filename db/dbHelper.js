@@ -37,7 +37,11 @@ export const dbHelper = {
           resolve(res)
         },
         fail(err) {
-          console.error('SQL执行失败:', finalSql, err)
+          console.error('SQL执行失败:', sql)
+          console.error('错误详情:', JSON.stringify(err, null, 2))
+          // 如果 err 有 message 属性
+          console.error('err.message:', err.message)
+          console.error('err.code:', err.code)
           reject(err)
         }
       })

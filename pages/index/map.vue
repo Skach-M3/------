@@ -199,10 +199,28 @@ const getFabItemStyle = (index: number) => {
 
 const handleFabClick = (item: any) => {
   isFabOpen.value = false;
-  uni.showToast({ title: `跳转至: ${item.name}`, icon: 'none' });
+  // 获取当前地图中心点坐标，传递给目标页面
+  const [lat, lng] = mapConfig.center;
+
+  const url = `/components/SchemaForm?lineId=${lineId.value}&type=${item.path}&name=${encodeURIComponent(item.name)}&lat=${lat}&lng=${lng}`;
+
+  uni.navigateTo({
+    url,
+    fail: (err) => {
+      console.error('跳转失败:', err);
+      uni.showToast({ title: `页面不存在: ${item.path}`, icon: 'none' });
+    }
+  });
 };
 
-onLoad(() => {
+const lineId = ref('');
+
+onLoad((options) => {
+  // 接收路由参数
+  if (options && options.lineId) {
+    lineId.value = options.lineId;
+  }
+
   uni.$on('map-message', handleMapMessage);
   uni.showLoading({ title: '定位中...' });
   uni.getLocation({

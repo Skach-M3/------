@@ -1,98 +1,155 @@
 // dao/deviceDAO.js
-import { dbHelper } from '../db/dbHelper'
+/**
+ * 设备数据访问对象
+ * 封装 t_device 表的增删改查，页面层不再直接写 SQL
+ */
+import { dbHelper } from '../db/dbHelper.js'
+import { generateId } from '../utils/common.js'
 
-export const deviceDAO = {
-    insert(device) {
-        const sql = `INSERT INTO t_device 
-      (id, line_id, device_type, name, longitude, latitude, prev_id, parent_id, sort_order, attributes, photos, status, created_at, updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+const deviceDAO = {
+
+    /**
+     * 插入一条设备记录
+     * @param {Object} device - 设备数据（不含 id、时间戳）
+     * @returns {string} 新生成的设备 ID
+     */
+    async insert(device) {
+        const id = generateId()
+        const now = Date.now()
+
+        const sql = `INSERT INTO t_device (
+      id, line_id, device_type, parent_id, prev_id,
+      name, longitude, latitude, sort_order, attributes,
+      sync_status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+
         const params = [
-            device.id,
-            device.lineId,
-            device.deviceType,
-            device.name,
-            device.longitude,
-            device.latitude,
-            device.prevId || null,
-            device.parentId || null,
-            device.sortOrder || 0,
-            JSON.stringify(device.attributes || {}),
-            JSON.stringify(device.photos || {}),
-            device.status || 'draft',
-            device.createdAt,
-            device.updatedAt
+            id,
+            device.line_id || '',
+            device.device_type || '',
+            device.parent_id || '',
+            device.prev_id || '',
+            device.name || '',
+            device.longitude || '',
+            device.latitude || '',
+            device.sort_order || 1,
+            device.attributes || '{}',
+            now,
+            now
         ]
-        return dbHelper.execute(sql, params)
+
+        await dbHelper.execute(sql, params)
+        return id
     },
 
-    update(device) {
-        const sql = `UPDATE t_device SET 
-      name=?, longitude=?, latitude=?, prev_id=?, parent_id=?,
-      sort_order=?, attributes=?, photos=?, status=?, updated_at=?
-      WHERE id=?`
+    /**
+     * 更新设备记录
+     * @param {string} id - 设备 ID
+     * @param {Object} fields - 需要更新的字段
+     */
+    async update(id, fields) {
+        const now = Date.now()
+
+        const sql = `UPDATE t_device SET
+      line_id = ?,
+      device_type = ?,
+      parent_id = ?,
+      prev_id = ?,
+      name = ?,
+      longitude = ?,
+      latitude = ?,
+      sort_order = ?,
+      attributes = ?,
+      sync_status = 0,
+      updated_at = ?
+    WHERE id = ?`
+
         const params = [
-            device.name,
-            device.longitude,
-            device.latitude,
-            device.prevId || null,
-            device.parentId || null,
-            device.sortOrder || 0,
-            JSON.stringify(device.attributes || {}),
-            JSON.stringify(device.photos || {}),
-            device.status,
-            device.updatedAt,
-            device.id
+            fields.line_id || '',
+            fields.device_type || '',
+            fields.parent_id || '',
+            fields.prev_id || '',
+            fields.name || '',
+            fields.longitude || '',
+            fields.latitude || '',
+            fields.sort_order || 1,
+            fields.attributes || '{}',
+            now,
+            id
         ]
-        return dbHelper.execute(sql, params)
+
+        await dbHelper.execute(sql, params)
     },
 
-    // 线路下所有主设备（parent_id 为空 = 非子设备），按排序正序
-    findByLineId(lineId) {
-        return dbHelper.select(
-            `SELECT * FROM t_device WHERE line_id=? AND (parent_id IS NULL OR parent_id='') AND status='saved' ORDER BY sort_order ASC`,
-            [lineId]
+    /**
+     * 根据 ID 查询单条设备
+     * @param {string} id
+     * @returns {Object|null}
+     */
+    async findById(id) {
+        const sql = 'SELECT * FROM t_device WHERE id = ?'
+        return await dbHelper.selectOne(sql, [id])
+    },
+
+    /**
+     * 查询指定线路 + 设备类型 + 父设备下，排序号最大的一条记录
+     * 用于新建时确定 prevId 和 sortOrder
+     * @param {string} lineId
+     * @param {string} deviceType
+     * @param {string} parentId - 无父设备时传空字符串
+     * @returns {Object|null}
+     */
+    async findLastDevice(lineId, deviceType, parentId) {
+        const sql = `SELECT * FROM t_device
+      WHERE line_id = ? AND device_type = ? AND parent_id = ?
+      ORDER BY sort_order DESC
+      LIMIT 1`
+        return await dbHelper.selectOne(sql, [lineId, deviceType, parentId || ''])
+    },
+
+    /**
+     * 查询指定父设备下某类型的全部子设备（按排序号升序）
+     * 用于子设备列表展示
+     * @param {string} lineId
+     * @param {string} deviceType
+     * @param {string} parentId
+     * @returns {Array}
+     */
+    async findByParent(lineId, deviceType, parentId) {
+        const sql = `SELECT * FROM t_device
+      WHERE line_id = ? AND device_type = ? AND parent_id = ?
+      ORDER BY sort_order ASC`
+        return await dbHelper.select(sql, [lineId, deviceType, parentId || ''])
+    },
+
+    /**
+     * 查询指定线路下某类型的全部设备（按排序号升序）
+     * 用于主设备列表展示（如线路下所有杆塔）
+     * @param {string} lineId
+     * @param {string} deviceType
+     * @returns {Array}
+     */
+    async findByLine(lineId, deviceType) {
+        const sql = `SELECT * FROM t_device
+      WHERE line_id = ? AND device_type = ?
+      ORDER BY sort_order ASC`
+        return await dbHelper.select(sql, [lineId, deviceType])
+    },
+
+    /**
+     * 删除设备（同时级联删除其子设备）
+     * @param {string} id
+     */
+    async deleteWithChildren(id) {
+        // 先删子设备
+        await dbHelper.execute(
+            'DELETE FROM t_device WHERE parent_id = ?', [id]
         )
-    },
-
-    // 某设备下的子设备
-    findChildren(parentId) {
-        return dbHelper.select(
-            `SELECT * FROM t_device WHERE parent_id=? AND status='saved' ORDER BY sort_order ASC`,
-            [parentId]
-        )
-    },
-
-    // 线路下最后一个主设备（用于自动设置 prev_id）
-    findLastDevice(lineId) {
-        return dbHelper.selectOne(
-            `SELECT * FROM t_device WHERE line_id=? AND (parent_id IS NULL OR parent_id='') AND status='saved' ORDER BY sort_order DESC LIMIT 1`,
-            [lineId]
-        )
-    },
-
-    // 线路下当前最大排序号
-    getMaxSortOrder(lineId) {
-        return dbHelper.selectOne(
-            `SELECT MAX(sort_order) as maxOrder FROM t_device WHERE line_id=? AND (parent_id IS NULL OR parent_id='')`,
-            [lineId]
-        ).then(row => (row && row.maxOrder) || 0)
-    },
-
-    findById(id) {
-        return dbHelper.selectOne('SELECT * FROM t_device WHERE id=?', [id])
-    },
-
-    // 删除设备及其所有子设备
-    async deleteById(id) {
-        await dbHelper.execute('DELETE FROM t_device WHERE parent_id=?', [id])
-        await dbHelper.execute('DELETE FROM t_device WHERE id=?', [id])
-    },
-
-    // 线路下全部设备（含子设备），用于导出
-    findAllByLineId(lineId) {
-        return dbHelper.select(
-            `SELECT * FROM t_device WHERE line_id=? AND status='saved' ORDER BY sort_order ASC, created_at ASC`,
-            [lineId]
+        // 再删自身
+        await dbHelper.execute(
+            'DELETE FROM t_device WHERE id = ?', [id]
         )
     }
 }
+
+export default deviceDAO

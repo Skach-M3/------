@@ -32,6 +32,7 @@ export async function initDatabase() {
       parent_id   TEXT,
       sort_order  INTEGER DEFAULT 0,
       attributes  TEXT DEFAULT '{}',
+      sync_status INTEGER DEFAULT 0,
       photos      TEXT DEFAULT '{}',
       status      TEXT DEFAULT 'draft',
       created_at  INTEGER NOT NULL,

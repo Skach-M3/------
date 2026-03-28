@@ -11,7 +11,8 @@
 
     <!-- 地图容器 -->
     <view id="map" class="map-container" :prop="mapConfig" :change:prop="mapModule.updateMapConfig"
-      :devicesProp="devicesProp" :change:devicesProp="mapModule.onDevicesChange"></view>
+      :devicesProp="devicesProp" :change:devicesProp="mapModule.onDevicesChange" :debugMarker="debugMarkerProp"
+      :change:debugMarker="mapModule.onDebugMarkerChange"></view>
 
     <!-- 右侧悬浮工具栏 -->
     <view class="right-tools">
@@ -74,14 +75,78 @@
       </view>
     </view>
 
+    <!-- DEBUG START -->
+    <view v-if="DEBUG_ENABLED" style="position:fixed;right:16px;bottom:160px;z-index:9999;">
+      <!-- 小虫子按钮 -->
+      <view @click="debugPanelOpen = !debugPanelOpen"
+        style="width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;">
+        <text style="font-size:22px;">🐛</text>
+      </view>
+
+      <!-- 展开面板 -->
+      <view v-if="debugPanelOpen"
+        style="position:absolute;bottom:52px;right:0;width:220px;background:rgba(0,0,0,0.8);border-radius:8px;padding:12px;">
+        <text style="color:#0f0;font-size:13px;font-weight:bold;">调试假定位</text>
+
+        <!-- 当前假坐标显示 -->
+        <view style="margin-top:8px;">
+          <text v-if="debugLocation.lat != null" style="color:#fff;font-size:12px;">
+            纬度: {{ debugLocation.lat.toFixed(6) }}
+          </text>
+          <text v-if="debugLocation.lng != null" style="color:#fff;font-size:12px;margin-top:2px;">
+            经度: {{ debugLocation.lng.toFixed(6) }}
+          </text>
+          <text v-if="debugLocation.lat == null" style="color:#999;font-size:12px;">
+            未设置，请点击地图选点
+          </text>
+        </view>
+
+        <!-- 选点模式开关 -->
+        <view @click="debugLocation.picking = !debugLocation.picking"
+          style="margin-top:10px;padding:6px 0;border-radius:4px;text-align:center;"
+          :style="{ background: debugLocation.picking ? '#ff5722' : '#2979ff' }">
+          <text style="color:#fff;font-size:13px;">
+            {{ debugLocation.picking ? '🔴 选点中...点地图' : '📍 点图定位' }}
+          </text>
+        </view>
+
+        <!-- 清除按钮 -->
+        <view v-if="debugLocation.lat != null" @click="onClearDebugLocation"
+          style="margin-top:8px;padding:6px 0;border-radius:4px;text-align:center;background:#666;">
+          <text style="color:#fff;font-size:13px;">🗑️ 清除假坐标</text>
+        </view>
+      </view>
+    </view>
+    <!-- DEBUG END -->
   </view>
 </template>
 
 <!-- 1. 逻辑层 -->
 <script setup lang="ts">
 import { ref, reactive, onUnmounted } from 'vue';
-import { onLoad, onShow } from '@dcloudio/uni-app'; // ← 新增 onShow
-import deviceDAO from '@/dao/deviceDAO.js'; // ← 新增
+import { onLoad, onShow } from '@dcloudio/uni-app';
+import deviceDAO from '@/dao/deviceDAO.js';
+import { getLocation } from '@/utils/get-location.js'
+// DEBUG START
+import { DEBUG_ENABLED, debugLocation, setDebugLocation, clearDebugLocation } from '@/utils/debug-location.js'
+const debugPanelOpen = ref(false)
+const debugMarkerProp = ref(null)
+
+function onMapClickDebug(e) {
+  if (!debugLocation.picking) return
+  setDebugLocation(e.lat, e.lng)
+  debugLocation.picking = false
+  // 通知 RenderJS 画标记
+  debugMarkerProp.value = { lat: e.lat, lng: e.lng, action: 'set', id: Date.now() }
+  console.log('[DEBUG] 假定位已设置:', e.lat, e.lng)
+}
+
+function onClearDebugLocation() {
+  clearDebugLocation()
+  // 通知 RenderJS 移除标记
+  debugMarkerProp.value = { action: 'clear', id: Date.now() }
+}
+// DEBUG END
 
 interface MapConfig {
   center: [number, number];
@@ -116,7 +181,7 @@ const toast = (name: string) => {
 // === 核心功能：获取定位 ===
 const locateUser = () => {
   uni.showLoading({ title: '定位中...' });
-  uni.getLocation({
+  getLocation({
     type: 'wgs84',
     success: (res) => {
       uni.hideLoading();
@@ -160,7 +225,16 @@ const handleMapMessage = (data: any) => {
     if (isFabOpen.value) {
       isFabOpen.value = false;
     }
+    // DEBUG START
+    onMapClickDebug({ lat: data.lat, lng: data.lng })
+    // DEBUG END
   }
+  // DEBUG START
+  if (data.type === 'debugDrag') {
+    setDebugLocation(data.lat, data.lng)
+    console.log('[DEBUG] 拖拽更新坐标:', data.lat, data.lng)
+  }
+  // DEBUG END
 };
 
 // === 底部悬浮菜单逻辑 ===
@@ -205,7 +279,17 @@ const getFabItemStyle = (index: number) => {
 // ← 修改：跳转到设备编辑页
 const handleFabClick = (item: any) => {
   isFabOpen.value = false;
-  const [lat, lng] = mapConfig.center;
+  // DEBUG START — 优先使用假定位坐标
+  let lat, lng;
+  if (DEBUG_ENABLED && debugLocation.lat !== null && debugLocation.lng !== null) {
+    lat = debugLocation.lat;
+    lng = debugLocation.lng;
+    console.log('[DEBUG] 新建设备使用假定位:', lat, lng);
+  } else {
+    lat = mapConfig.center[0];
+    lng = mapConfig.center[1];
+  }
+  // DEBUG END
   const url = `/pages/device/edit?lineId=${lineId.value}&deviceType=${item.deviceType}&lat=${Number(lat).toFixed(6)}&lng=${Number(lng).toFixed(6)}`;
 
   uni.navigateTo({
@@ -236,7 +320,7 @@ onLoad((options) => {
 
   uni.$on('map-message', handleMapMessage);
   uni.showLoading({ title: '定位中...' });
-  uni.getLocation({
+  getLocation({
     type: 'wgs84',
     success: (res) => {
       uni.hideLoading();
@@ -284,7 +368,8 @@ export default {
       deviceLayerGroup: null,   // ← 新增：设备图层组
       pendingDevices: null,     // ← 新增：地图未就绪时暂存设备数据
       tdtKey: 'a30fe8f02deafbdc08192aa8f81c0044',
-      pendingConfig: null
+      pendingConfig: null,
+      debugMarker: null // DEBUG
     }
   },
   mounted() {
@@ -582,7 +667,61 @@ export default {
 
       this.layers.base = L.tileLayer(layerUrl, { maxZoom: 18 }).addTo(this.map);
       this.layers.label = L.tileLayer(labelUrl, { maxZoom: 18 }).addTo(this.map);
+    },
+    // DEBUG START
+    onDebugMarkerChange(newValue) {
+      if (!newValue) return
+      if (!this.map) return
+      if (newValue.action === 'set') {
+        this.drawDebugMarker(newValue.lat, newValue.lng)
+      } else if (newValue.action === 'clear') {
+        this.removeDebugMarker()
+      }
+    },
+    
+    drawDebugMarker(lat, lng) {
+      if (this.debugMarker) {
+        this.map.removeLayer(this.debugMarker)
+      }
+    
+      var crossHtml = ''
+        + '<div style="position:relative;width:40px;height:40px;">'
+        + '<div style="position:absolute;top:50%;left:0;width:100%;height:2px;background:red;transform:translateY(-50%);"></div>'
+        + '<div style="position:absolute;left:50%;top:0;height:100%;width:2px;background:red;transform:translateX(-50%);"></div>'
+        + '<div style="position:absolute;top:50%;left:50%;width:14px;height:14px;border:2px solid red;border-radius:50%;transform:translate(-50%,-50%);background:rgba(255,0,0,0.15);"></div>'
+        + '</div>';
+      
+      var icon = L.divIcon({
+        className: '',
+        html: crossHtml,
+        iconSize: [40, 40],
+        iconAnchor: [20, 20]
+      });
+      
+      this.debugMarker = L.marker([lat, lng], {
+        icon: icon,
+        draggable: true,
+        zIndexOffset: 9999
+      }).addTo(this.map);
+      
+      var self = this;
+      this.debugMarker.on('dragend', function (e) {
+        var pos = e.target.getLatLng();
+        self.$ownerInstance.callMethod('receiveRenderData', {
+          type: 'debugDrag',
+          lat: pos.lat,
+          lng: pos.lng
+        });
+      });
+    },
+    
+    removeDebugMarker() {
+      if (this.debugMarker) {
+        this.map.removeLayer(this.debugMarker);
+        this.debugMarker = null;
+      }
     }
+    // DEBUG END
   }
 }
 </script>

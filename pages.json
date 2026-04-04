@@ -15,14 +15,15 @@
 		{
 			"path": "pages/device/edit",
 			"style": {
-				"navigationBarTitleText": "",
+				"navigationBarTitleText": "填写设备信息",
 				"navigationStyle": "custom"
 			}
 		},
 		{
 			"path": "pages/line/edit",
 			"style": {
-				"navigationBarTitleText": "填写设备信息"
+				"navigationBarTitleText": "",
+				"navigationStyle": "custom"
 			}
 		},
 		{

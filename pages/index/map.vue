@@ -158,6 +158,42 @@ import { DEBUG_ENABLED, debugLocation, setDebugLocation, clearDebugLocation } fr
 const debugPanelOpen = ref(false)
 const debugMarkerProp = ref(null)
 
+function onMapClickDebug(e) {
+  if (!debugLocation.picking) return
+  setDebugLocation(e.lat, e.lng)
+  debugLocation.picking = false
+  // 通知 RenderJS 画标记
+  debugMarkerProp.value = { lat: e.lat, lng: e.lng, action: 'set', id: Date.now() }
+  console.log('[DEBUG] 假定位已设置:', e.lat, e.lng)
+}
+
+function onClearDebugLocation() {
+  clearDebugLocation()
+  // 通知 RenderJS 移除标记
+  debugMarkerProp.value = { action: 'clear', id: Date.now() }
+}
+// DEBUG END
+
+// 用户当前真实位置（独立于 mapConfig.center）
+const userLocation = ref({ lat: 0, lng: 0 });
+
+// Haversine 公式计算两点距离，返回格式化字符串
+const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): string => {
+  const R = 6371000; // 地球半径（米）
+  const toRad = (deg: number) => deg * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+  if (distance < 1000) {
+    return distance.toFixed(0) + 'm';
+  }
+  return (distance / 1000).toFixed(2) + 'km';
+};
+
 // 设备列表面板
 const showDevicePanel = ref(false);
 // 当前选中的设备信息
@@ -198,26 +234,6 @@ const handleMove = () => {
   console.log('点击了移动', currentDeviceInfo.value);
 };
 
-const closeDevicePanel = () => {
-  showDevicePanel.value = false;
-};
-
-function onMapClickDebug(e) {
-  if (!debugLocation.picking) return
-  setDebugLocation(e.lat, e.lng)
-  debugLocation.picking = false
-  // 通知 RenderJS 画标记
-  debugMarkerProp.value = { lat: e.lat, lng: e.lng, action: 'set', id: Date.now() }
-  console.log('[DEBUG] 假定位已设置:', e.lat, e.lng)
-}
-
-function onClearDebugLocation() {
-  clearDebugLocation()
-  // 通知 RenderJS 移除标记
-  debugMarkerProp.value = { action: 'clear', id: Date.now() }
-}
-// DEBUG END
-
 interface MapConfig {
   center: [number, number];
   zoom: number;
@@ -255,6 +271,7 @@ const locateUser = () => {
     type: 'wgs84',
     success: (res) => {
       uni.hideLoading();
+      userLocation.value = { lat: res.latitude, lng: res.longitude };
       mapConfig.center = [res.latitude, res.longitude];
       mapConfig.zoom = 16;
       mapConfig.actionType = 'locate';
@@ -295,8 +312,30 @@ const handleMapMessage = (data: any) => {
   if (data.type === 'deviceClick') {
     // 点击了设备图标
     console.log('点击了设备:', data.device);
-    currentDeviceInfo.value = data.device;
-    showDevicePanel.value = true; // 弹出面板
+    const device = data.device;
+
+    // 确定当前参考坐标（优先使用调试假定位）
+    let refLat: number, refLng: number;
+    if (DEBUG_ENABLED && debugLocation.lat !== null && debugLocation.lng !== null) {
+      refLat = debugLocation.lat;
+      refLng = debugLocation.lng;
+    } else {
+      refLat = userLocation.value.lat;
+      refLng = userLocation.value.lng;
+    }
+
+    // 计算距离
+    const dist = (refLat !== 0 || refLng !== 0)
+      ? calculateDistance(refLat, refLng, device.lat, device.lng)
+      : '未定位';
+
+    currentDeviceInfo.value = {
+      name: device.name || '未知设备',
+      distance: dist,
+      lng: Number(device.lng).toFixed(6),
+      lat: Number(device.lat).toFixed(6)
+    };
+    showDevicePanel.value = true;
   } else if (data.type === 'click') {
     console.log(`点击坐标: ${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}`);
     // 点击地图时，关闭设备列表面板
@@ -403,6 +442,7 @@ onLoad((options) => {
     type: 'wgs84',
     success: (res) => {
       uni.hideLoading();
+      userLocation.value = { lat: res.latitude, lng: res.longitude };
       mapConfig.center = [res.latitude, res.longitude];
       mapConfig.zoom = 16;
       mapConfig.actionType = 'initLocate';
@@ -604,6 +644,7 @@ export default {
     
       this.deviceLayerGroup = L.layerGroup().addTo(this.map);
       var lineCoords = [];
+      var self = this; // 保存 this 引用
     
       for (var i = 0; i < devices.length; i++) { 
         var device=devices[i];
@@ -662,25 +703,26 @@ export default {
 
         // 将 marker 存为变量，并绑定点击事件
         var marker = L.marker(latlng, { icon: icon }).addTo(this.deviceLayerGroup);
-        
-        // 绑定点击事件，通过已有的 receiveRenderData 统一发送给逻辑层
-        marker.on('click', (e) => {
-        // 阻止事件冒泡到地图底图上（防止触发地图的空白点击）
-        if (e.originalEvent) {
-        L.DomEvent.stopPropagation(e.originalEvent);
-        }
-        
-        this.$ownerInstance.callMethod('receiveRenderData', {
-            type: 'deviceClick', // 标记这是一个设备点击事件
-            device: {
-            name: displayName,
-            lat: lat,
-            lng: lng,
-            device_type: device.device_type,
-            distance: device.distance || '未知'
+
+        // 用 IIFE 捕获当前循环变量的值，避免闭包引用最后一次迭代
+        ;(function(capturedName, capturedLat, capturedLng, capturedType) {
+          // 绑定点击事件，通过已有的 receiveRenderData 统一发送给逻辑层
+          marker.on('click', function(e) {
+            // 阻止事件冒泡到地图底图上（防止触发地图的空白点击）
+            if (e.originalEvent) {
+              L.DomEvent.stopPropagation(e.originalEvent);
             }
+            self.$ownerInstance.callMethod('receiveRenderData', {
+              type: 'deviceClick',
+              device: {
+                name: capturedName,
+                lat: capturedLat,
+                lng: capturedLng,
+                device_type: capturedType
+              }
+            });
           });
-        });
+        })(displayName, lat, lng, device.device_type);
         
         // 仅顶层设备参与连线
         if (!device.parent_id || device.parent_id === '' ) { 
@@ -691,9 +733,9 @@ export default {
       // 按 sort_order 顺序连线
       if (lineCoords.length>= 2) {
         L.polyline(lineCoords, {
-          color: '#006567',
-          weight: 3,
-          opacity: 0.8
+          color: '#03da6b',
+          weight: 2,
+          opacity: 1
         }).addTo(this.deviceLayerGroup);
       }
     },

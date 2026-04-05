@@ -26,10 +26,6 @@
           <text class="icon">🔍</text>
           <text class="text">搜索</text>
         </view>
-        <view class="tool-item" @click="toast('叠加')">
-          <text class="icon">📚</text>
-          <text class="text">叠加</text>
-        </view>
         <view class="tool-item" @click="toast('名称')">
           <text class="icon">👁</text>
           <text class="text">名称</text>
@@ -59,8 +55,8 @@
       </view>
     </view>
 
-    <!-- 底部中间悬浮加号及展开菜单 -->
-    <view class="bottom-fab-wrapper">
+    <!-- 底部中间悬浮加号及展开菜单，当设备面板出现时隐藏 -->
+    <view class="bottom-fab-wrapper" v-show="!showDevicePanel">
       <!-- 展开的子按钮 -->
       <view class="fab-menu">
         <view class="fab-sub-item" v-for="(item, index) in fabItems" :key="index" :style="getFabItemStyle(index)"
@@ -72,6 +68,36 @@
       <!-- 主按钮 -->
       <view class="fab-main" @click="toggleFab">
         <text class="fab-main-icon" :class="{ 'is-open': isFabOpen }">+</text>
+      </view>
+    </view>
+
+    <!-- 底部设备信息面板 -->
+    <view class="device-panel-wrapper" v-if="showDevicePanel">
+      <!-- 左上角切换按钮 -->
+      <view class="panel-switch-btns">
+        <view class="switch-btn" @click="prevDevice">
+          <text class="arrow-icon">&lt;</text>
+        </view>
+        <view class="switch-btn" @click="nextDevice">
+          <text class="arrow-icon">&gt;</text>
+        </view>
+      </view>
+
+      <!-- 白色主面板 -->
+      <view class="device-panel">
+        <!-- 上半部分：信息区 -->
+        <view class="panel-info">
+          <view class="info-title">{{ currentDeviceInfo.name || '未知设备' }}</view>
+          <view class="info-desc">距离：{{ currentDeviceInfo.distance || '未知' }}</view>
+          <view class="info-desc">经纬度：{{ currentDeviceInfo.lng }}, {{ currentDeviceInfo.lat }}</view>
+        </view>
+
+        <!-- 下半部分：操作区 -->
+        <view class="panel-actions">
+          <view class="action-item" @click="handleNavigate">导航</view>
+          <view class="action-item" @click="handleDetails">详情</view>
+          <view class="action-item no-border" @click="handleMove">移动</view>
+        </view>
       </view>
     </view>
 
@@ -131,6 +157,50 @@ import { getLocation } from '@/utils/get-location.js'
 import { DEBUG_ENABLED, debugLocation, setDebugLocation, clearDebugLocation } from '@/utils/debug-location.js'
 const debugPanelOpen = ref(false)
 const debugMarkerProp = ref(null)
+
+// 设备列表面板
+const showDevicePanel = ref(false);
+// 当前选中的设备信息
+const currentDeviceInfo = ref({
+  name: '',
+  distance: '',
+  lng: '',
+  lat: ''
+});
+
+// 接收 RenderJS 传来的设备点击事件
+const onDeviceClick = (deviceInfo) => {
+  // 直接更新数据，如果面板已打开，视图会无缝更新；如果未打开，则显示面板
+  currentDeviceInfo.value = deviceInfo;
+  showDevicePanel.value = true;
+};
+
+// 面板相关的预留操作方法
+const prevDevice = () => {
+  console.log('点击了上一个设备');
+  // TODO: 实现切换上一个设备的逻辑
+};
+
+const nextDevice = () => {
+  console.log('点击了下一个设备');
+  // TODO: 实现切换下一个设备的逻辑
+};
+
+const handleNavigate = () => {
+  console.log('点击了导航', currentDeviceInfo.value);
+};
+
+const handleDetails = () => {
+  console.log('点击了详情', currentDeviceInfo.value);
+};
+
+const handleMove = () => {
+  console.log('点击了移动', currentDeviceInfo.value);
+};
+
+const closeDevicePanel = () => {
+  showDevicePanel.value = false;
+};
 
 function onMapClickDebug(e) {
   if (!debugLocation.picking) return
@@ -220,8 +290,17 @@ const toggleLayer = () => {
 };
 
 const handleMapMessage = (data: any) => {
-  if (data.type === 'click') {
+  if (!data) return;
+
+  if (data.type === 'deviceClick') {
+    // 点击了设备图标
+    console.log('点击了设备:', data.device);
+    currentDeviceInfo.value = data.device;
+    showDevicePanel.value = true; // 弹出面板
+  } else if (data.type === 'click') {
     console.log(`点击坐标: ${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}`);
+    // 点击地图时，关闭设备列表面板
+    showDevicePanel.value = false;
     if (isFabOpen.value) {
       isFabOpen.value = false;
     }
@@ -580,7 +659,28 @@ export default {
           iconSize: [28, 34], // 整体尺寸缩小
           iconAnchor: [14, 34] // 锚点对准水滴最底部的尖端
         });
-        L.marker(latlng, { icon: icon }).addTo(this.deviceLayerGroup);
+
+        // 将 marker 存为变量，并绑定点击事件
+        var marker = L.marker(latlng, { icon: icon }).addTo(this.deviceLayerGroup);
+        
+        // 绑定点击事件，通过已有的 receiveRenderData 统一发送给逻辑层
+        marker.on('click', (e) => {
+        // 阻止事件冒泡到地图底图上（防止触发地图的空白点击）
+        if (e.originalEvent) {
+        L.DomEvent.stopPropagation(e.originalEvent);
+        }
+        
+        this.$ownerInstance.callMethod('receiveRenderData', {
+            type: 'deviceClick', // 标记这是一个设备点击事件
+            device: {
+            name: displayName,
+            lat: lat,
+            lng: lng,
+            device_type: device.device_type,
+            distance: device.distance || '未知'
+            }
+          });
+        });
         
         // 仅顶层设备参与连线
         if (!device.parent_id || device.parent_id === '' ) { 
@@ -910,5 +1010,100 @@ export default {
   text-align: center;
   line-height: 1.2;
   padding: 0 4px;
+}
+
+/* --- 底部设备面板样式 --- */
+.device-panel-wrapper {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 999;
+  /* 确保弹窗层级最高 */
+}
+
+/* 左上角悬浮切换按钮 */
+.panel-switch-btns {
+  position: absolute;
+  top: -40px;
+  /* 悬浮在主面板上方 */
+  left: 20px;
+  display: flex;
+  gap: 10px;
+}
+
+.switch-btn {
+  width: 36px;
+  height: 36px;
+  background-color: #ffffff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+
+.arrow-icon {
+  font-size: 16px;
+  color: #333333;
+  font-weight: bold;
+}
+
+/* 白色主面板 */
+.device-panel {
+  background-color: #ffffff;
+  border-radius: 16px 16px 0 0;
+  /* 顶部圆角 */
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 上半部分：信息区 */
+.panel-info {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.info-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333333;
+  margin-bottom: 4px;
+}
+
+.info-desc {
+  font-size: 14px;
+  color: #666666;
+}
+
+/* 下半部分：操作区 */
+.panel-actions {
+  display: flex;
+  flex-direction: row;
+  border-top: 1px solid #eeeeee;
+  /* 顶部水平分割线 */
+  height: 50px;
+}
+
+.action-item {
+  flex: 1;
+  /* 均分三个区域 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  color: #007aff;
+  /* 主题蓝，可根据你的UI调整 */
+  border-right: 1px solid #eeeeee;
+  /* 右侧垂直分割线 */
+}
+
+/* 最后一个按钮去掉右侧分割线 */
+.action-item.no-border {
+  border-right: none;
 }
 </style>

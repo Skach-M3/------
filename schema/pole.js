@@ -9,6 +9,8 @@ export default {
     { deviceType: 'pole_switchgear', label: '柱上开关' }
   ],  // 可挂载的子设备类型
   isAvailablePreNode: true,  // 是否出现在上级节点待选
+  isPreNodeEditable: true,  // 是否可编辑上级节点
+  preNodeFieldName: "上级节点",
 
   fields: [
     // ===== 基础信息 =====

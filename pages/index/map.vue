@@ -677,8 +677,11 @@ export default {
       if (!devices || devices.length === 0) return;
     
       this.deviceLayerGroup = L.layerGroup().addTo(this.map);
-      var lineCoords = [];
       var self = this; // 保存 this 引用
+      
+      // 构建设备ID到设备对象的映射，用于快速查找
+      var deviceMap = {};
+      var topLevelDevices = [];
     
       for (var i = 0; i < devices.length; i++) { 
         var device=devices[i];
@@ -698,7 +701,7 @@ export default {
           +   'width:28px;height:28px;'
           +   'display:flex;align-items:center;justify-content:center;'
           +   'flex-shrink:0;'
-          +  '">'
+          +  '">' 
           +   '<!-- 倒水滴背景 -->'
           +   '<div style="'
           +    'position:absolute;top:0;left:0;width:100%;height:100%;'
@@ -712,7 +715,7 @@ export default {
           +    'position:relative;z-index:1;'
           +    'width:16px;height:16px;'
           +    'display:flex;align-items:center;justify-content:center;'
-          +   '">'
+          +   '">' 
           +    svgHtml
           +   '</div>'
           +  '</div>'
@@ -758,19 +761,35 @@ export default {
           });
         })(displayName, lat, lng, device.device_type);
         
+        // 构建设备映射表，用于后续连线
+        deviceMap[device.id] = {
+          id: device.id,
+          latlng: latlng,
+          prev_id: device.prev_id,
+          parent_id: device.parent_id
+        };
+        
         // 仅顶层设备参与连线
-        if (!device.parent_id || device.parent_id === '' ) { 
-          lineCoords.push(latlng);
+        if (!device.parent_id || device.parent_id === '') {
+          topLevelDevices.push(deviceMap[device.id]);
         }
       }
 
-      // 按 sort_order 顺序连线
-      if (lineCoords.length>= 2) {
-        L.polyline(lineCoords, {
-          color: '#03da6b',
-          weight: 2,
-          opacity: 1
-        }).addTo(this.deviceLayerGroup);
+      // 基于 prev_id 连接顶层设备，支持分支线路
+      for (var j = 0; j < topLevelDevices.length; j++) {
+        var currentDevice = topLevelDevices[j];
+        
+        // 如果设备有 prev_id，则连接到前一个设备
+        if (currentDevice.prev_id && currentDevice.prev_id !== '' && deviceMap[currentDevice.prev_id]) {
+          var prevDevice = deviceMap[currentDevice.prev_id];
+          
+          // 绘制连线
+          L.polyline([prevDevice.latlng, currentDevice.latlng], {
+            color: '#03da6b',
+            weight: 2,
+            opacity: 1
+          }).addTo(this.deviceLayerGroup);
+        }
       }
     },
     

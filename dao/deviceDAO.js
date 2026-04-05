@@ -3,6 +3,7 @@
  * 设备数据访问对象
  * 封装 t_device 表的增删改查，页面层不再直接写 SQL
  */
+import { getSchema } from '@/schema/index.js'
 import { dbHelper } from '../db/dbHelper.js'
 import { generateId } from '../utils/common.js'
 
@@ -128,6 +129,28 @@ const deviceDAO = {
       WHERE line_id = ?
       ORDER BY sort_order ASC, created_at ASC`
         return await dbHelper.select(sql, [lineId])
+    },
+
+    /**
+     * 查询指定线路下所有可作为上级节点的设备
+     * 用于设备编辑页面的上级节点选择
+     * @param {string} lineId
+     * @returns {Array}
+     */
+    async findAvailablePreNodes(lineId) {
+        const sql = `SELECT * FROM t_device
+      WHERE line_id = ?
+      ORDER BY sort_order ASC, created_at ASC`
+        const allDevices = await dbHelper.select(sql, [lineId])
+        console.log("所有设备", allDevices);
+
+        // 过滤出isAvailablePreNode为true且不是子设备的设备
+        // 子设备的判断标准：parent_id 不为空
+        return allDevices.filter(device => {
+            const schema = getSchema(device.device_type)
+            const isChildDevice = device.parent_id && device.parent_id !== ''
+            return schema && schema.isAvailablePreNode === true && !isChildDevice
+        })
     },
 
     /**

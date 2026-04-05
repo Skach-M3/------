@@ -7,12 +7,13 @@ export default {
     isChild: true,
     parentTypes: ['pole'],
     nameField: 'switch_name',
-
-    // 子类型选择配置
+    isAvailablePreNode: true,
+    isPreNodeEditable: false,
+    preNodeFieldName: '附属设备', // 子类型选择配置
     subTypeField: 'switch_category',       // subType 值写入哪个字段
     subTypes: [
-        { value: '柱上断路器',       label: '柱上断路器',       icon: '/static/icons/breaker.png' },
-        { value: '柱上隔离开关',     label: '柱上隔离开关',     icon: '/static/icons/isolator.png' },
+        { value: '柱上断路器', label: '柱上断路器', icon: '/static/icons/breaker.png' },
+        { value: '柱上隔离开关', label: '柱上隔离开关', icon: '/static/icons/isolator.png' },
         { value: '柱上跌落式熔断器', label: '柱上跌落式熔断器', icon: '/static/icons/fuse.png' }
     ],
 
@@ -26,8 +27,8 @@ export default {
             required: true,
             editable: false,
             options: [
-                { label: '柱上断路器',       value: '柱上断路器' },
-                { label: '柱上隔离开关',     value: '柱上隔离开关' },
+                { label: '柱上断路器', value: '柱上断路器' },
+                { label: '柱上隔离开关', value: '柱上隔离开关' },
                 { label: '柱上跌落式熔断器', value: '柱上跌落式熔断器' }
             ],
             exportOrder: 0,

@@ -12,7 +12,8 @@
     <!-- 地图容器 -->
     <view id="map" class="map-container" :prop="mapConfig" :change:prop="mapModule.updateMapConfig"
       :devicesProp="devicesProp" :change:devicesProp="mapModule.onDevicesChange" :debugMarker="debugMarkerProp"
-      :change:debugMarker="mapModule.onDebugMarkerChange"></view>
+      :change:debugMarker="mapModule.onDebugMarkerChange" :showNamesProp="showDeviceNames"
+      :change:showNamesProp="mapModule.onShowNamesChange"></view>
 
     <!-- 右侧悬浮工具栏 -->
     <view class="right-tools" v-show="!isMovingDevice">
@@ -26,8 +27,12 @@
           <text class="icon">🔍</text>
           <text class="text">搜索</text>
         </view>
-        <view class="tool-item" @click="toast('名称')">
-          <text class="icon">👁</text>
+        <view class="tool-item" @click="toggleDeviceNames">
+          <view class="icon-eye-wrap">
+            <text class="icon">👁</text>
+            <!-- 关闭时叠加一条斜线 -->
+            <view v-if="!showDeviceNames" class="eye-slash"></view>
+          </view>
           <text class="text">名称</text>
         </view>
       </view>
@@ -296,6 +301,13 @@ const toast = (name: string) => {
   uni.showToast({ title: `点击了: ${name}`, icon: 'none' });
 };
 
+// 名称显示开关，默认显示
+const showDeviceNames = ref(true);
+
+const toggleDeviceNames = () => {
+  showDeviceNames.value = !showDeviceNames.value;
+};
+
 // === 核心功能：获取定位 ===
 const locateUser = () => {
   uni.showLoading({ title: '定位中...' });
@@ -526,6 +538,7 @@ export default {
       pendingDevices: null,     // ← 新增：地图未就绪时暂存设备数据
       tdtKey: 'a30fe8f02deafbdc08192aa8f81c0044',
       pendingConfig: null,
+      showNames: true,
       debugMarker: null // DEBUG
     }
   },
@@ -668,6 +681,25 @@ export default {
       }).addTo(this.map);
     },
 
+    onShowNamesChange(newValue) {
+      this.showNames = newValue;
+      // 拿到当前设备数据重新绘制
+      if (this.map && this.deviceLayerGroup) {
+        // 遍历所有 marker，切换名称 span 的显示
+        this.deviceLayerGroup.eachLayer(function(layer) {
+          if (layer.getElement) {
+            var el = layer.getElement();
+            if (el) {
+              var nameSpan = el.querySelector('.device-name-label');
+              if (nameSpan) {
+                nameSpan.style.display = newValue ? 'inline' : 'none';
+              }
+            }
+          }
+        });
+      }
+    },
+
     /**
     * 绘制设备标记和连线
     * Marker 样式：倒水滴状定位针 + 内嵌居中 SVG 图标 + 右侧名称标签
@@ -724,7 +756,8 @@ export default {
           +   '</div>'
           +  '</div>'
           // 右侧文字
-          + '<span style="'
+          + '<span class="device-name-label" style="'
+          +  'display:' + (self.showNames ? 'inline' : 'none') + ';'
           +  'margin-left:6px;margin-top:4px;'
           +  'white-space:nowrap;'
           +  'color:#fff;font-size:12px;font-weight:bold;'
@@ -1022,6 +1055,22 @@ export default {
 .tool-item .text {
   font-size: 10px;
   color: #666;
+}
+
+.icon-eye-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eye-slash {
+  position: absolute;
+  width: 4rpx;
+  height: 120%;
+  background-color: #ff4444;
+  transform: rotate(45deg);
+  border-radius: 2rpx;
 }
 
 .zoom-btn {

@@ -442,7 +442,7 @@ const handleFabClick = (item: any) => {
     lng = mapConfig.center[1];
   }
   // DEBUG END
-  const url = `/pages/device/edit?lineId=${lineId.value}&deviceType=${item.deviceType}&lat=${Number(lat).toFixed(6)}&lng=${Number(lng).toFixed(6)}`;
+  const url = `/pages/device/edit?lineId=${lineId.value}&lineName=${encodeURIComponent(lineName.value)}&deviceType=${item.deviceType}&lat=${Number(lat).toFixed(6)}&lng=${Number(lng).toFixed(6)}`;
 
   uni.navigateTo({
     url,
@@ -464,10 +464,14 @@ const loadDevices = async () => {
 };
 
 const lineId = ref('');
+const lineName = ref('');
 
 onLoad((options) => {
   if (options && options.lineId) {
     lineId.value = options.lineId;
+  }
+  if (options && options.lineName) {
+    lineName.value = decodeURIComponent(options.lineName);
   }
 
   uni.$on('map-message', handleMapMessage);

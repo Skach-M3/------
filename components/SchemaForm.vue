@@ -20,6 +20,14 @@
             :placeholder="field.placeholder || ('请输入' + field.label)"
             @input="onInput(field.key, $event.detail.value)" />
 
+          <!-- composite-name 复合名称字段 -->
+          <view v-else-if="field.type === 'composite-name'" class="composite-name-wrapper">
+            <input class="composite-name-prefix" :value="compositePrefix" disabled />
+            <input class="composite-name-suffix" :value="compositeSuffix"
+              :placeholder="field.placeholder || ('请输入' + field.label)"
+              @input="onCompositeInput(field.key, $event.detail.value)" />
+          </view>
+
           <!-- number -->
           <input v-else-if="field.type === 'number'" class="form-input" type="digit" :value="modelValue[field.key]"
             :placeholder="field.placeholder || ('请输入' + field.label)"
@@ -103,10 +111,31 @@ export default {
     modelValue: {
       type: Object,
       default: () => ({})
+    },
+    lineName: {
+      type: String,
+      default: ''
+    },
+    parentName: {
+      type: String,
+      default: ''
     }
   },
 
   emits: ['update:modelValue'],
+
+  computed: {
+    compositePrefix() {
+      return this.lineName ? `${this.lineName}#` : ''
+    },
+    compositeSuffix() {
+      const value = this.modelValue['pole_name'] || ''
+      if (value && value.includes('#')) {
+        return value.split('#')[1] || ''
+      }
+      return value
+    }
+  },
 
   methods: {
     /* ========== 选项处理（核心修复） ========== */
@@ -163,6 +192,13 @@ export default {
     onInput(key, value) {
       const newVal = { ...this.modelValue, [key]: value }
       this.clearInvalidDependents(key, value, newVal)
+      this.emitUpdate(newVal)
+    },
+
+    onCompositeInput(key, suffix) {
+      const prefix = this.compositePrefix
+      const newVal = { ...this.modelValue, [key]: prefix + suffix }
+      this.clearInvalidDependents(key, newVal[key], newVal)
       this.emitUpdate(newVal)
     },
 
@@ -331,6 +367,43 @@ export default {
 /* ---- 文本输入框 ---- */
 .form-input {
   width: 100%;
+  height: 72rpx;
+  border: 1rpx solid #dcdfe6;
+  border-radius: 8rpx;
+  padding: 0 20rpx;
+  font-size: 28rpx;
+  color: #333;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+/* ---- 复合名称输入框 ---- */
+.composite-name-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.composite-name-prefix {
+  flex: 0 0 auto;
+  min-width: 100rpx;
+  max-width: 200rpx;
+  height: 72rpx;
+  border: 1rpx solid #dcdfe6;
+  border-radius: 8rpx;
+  padding: 0 20rpx;
+  font-size: 28rpx;
+  color: #333;
+  background: #f5f7fa;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composite-name-suffix {
+  flex: 1;
   height: 72rpx;
   border: 1rpx solid #dcdfe6;
   border-radius: 8rpx;

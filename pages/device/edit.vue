@@ -25,7 +25,8 @@
       <view class="card-header">
         <text class="card-title">{{ currentSchema.label }}信息</text>
       </view>
-      <schema-form ref="formRef" :schema="currentSchema" v-model="attributes" />
+      <schema-form ref="formRef" :schema="currentSchema" v-model="attributes" :lineName="lineName"
+        :parentName="parentName" />
     </view>
 
     <!-- 子设备入口（主设备已保存 且 schema 定义了 children 时显示） -->
@@ -84,6 +85,7 @@ export default {
     return {
       // 路由参数
       lineId: '',
+      lineName: '',
       deviceType: '',
       deviceId: '',
       parentId: '',
@@ -138,6 +140,7 @@ export default {
 
   onLoad(query) {
     this.lineId = query.lineId || ''
+    this.lineName = query.lineName ? decodeURIComponent(query.lineName) : ''
     this.deviceType = query.deviceType || 'pole'
     this.deviceId = query.deviceId || ''
     this.parentId = query.parentId || ''
@@ -236,6 +239,9 @@ export default {
           this.sortOrder = (lastDevice.sort_order || 0) + 1
           this.prevLongitude = lastDevice.longitude || ''
           this.prevLatitude = lastDevice.latitude || ''
+          if (lastDevice.name) {
+            this.parentName = lastDevice.name
+          }
         } else {
           this.prevId = ''
           this.sortOrder = 1
@@ -254,6 +260,8 @@ export default {
           this.$nextTick(() => {
             // ★ 在默认值初始化之后，再覆盖写入子类型相关字段
             this.applySubTypeDefaults()
+            // 自动生成设备名称
+            this.generateDeviceName()
             this.syncCoordsToAttributes()
             this.calcSpanLength()
           })
@@ -261,6 +269,80 @@ export default {
       } catch (e) {
         console.error('初始化新设备失败:', e)
       }
+    },
+
+    /**
+     * 自动生成设备名称
+     * 格式：线路名#用户自定义(杆塔)
+     * 用户自定义部分：自动填入上级节点名称，最后一位+1
+     */
+    generateDeviceName() {
+      const nameField = this.currentSchema.nameField
+      if (!nameField) return
+      if (!this.lineName) return
+
+      let suffix = ''
+
+      // 根据设备类型应用不同的命名规则
+      switch (this.deviceType) {
+        case 'pole':
+          // 杆塔的命名规则
+          if (this.parentName) {
+            // 如果上级节点名称包含"#"，提取第一个"#"后面的全部内容
+            const hashIndex = this.parentName.indexOf('#')
+            if (hashIndex !== -1) {
+              suffix = this.parentName.substring(hashIndex + 1)
+            } else {
+              suffix = this.parentName
+            }
+            const match = suffix.match(/(\d+)$/)
+            if (match) {
+              const numStr = match[1]
+              const nextNum = parseInt(numStr, 10) + 1
+              // 保持原有位数，如 "004" → "005"，"009" → "010"
+              const nextStr = String(nextNum).padStart(numStr.length, '0')
+              suffix = suffix.slice(0, -numStr.length) + nextStr
+            }
+          }
+          break
+
+        case 'cable':
+          // 电缆拐点的命名规则
+          suffix = `C${this.sortOrder}`
+          break
+
+        case 'transformer':
+          // 变压器的命名规则
+          suffix = `T${this.sortOrder}`
+          break
+
+        default:
+          // 默认规则
+          if (this.parentName) {
+            const hashIndex = this.parentName.indexOf('#')
+            if (hashIndex !== -1) {
+              suffix = this.parentName.substring(hashIndex + 1)
+            } else {
+              suffix = this.parentName
+            }
+          }
+      }
+
+      this.attributes = {
+        ...this.attributes,
+        [nameField]: this.lineName + '#' + suffix
+      }
+    },
+
+    incrementTrailingNumber(name) {
+      const match = name.match(/(\d+)$/)
+      if (match) {
+        const numStr = match[1]
+        const nextNum = parseInt(numStr, 10) + 1
+        const nextStr = String(nextNum).padStart(numStr.length, '0')
+        return name.slice(0, -numStr.length) + nextStr
+      }
+      return name
     },
 
     /* ========== ★ 子设备加载 ========== */
@@ -343,6 +425,8 @@ export default {
       if (index >= 0) {
         this.preNodeIndex = index
         this.preNodeDisplay = this.preNodeOptions[index].label
+        // 同步 parentName，确保 generateDeviceName 用到正确的名称
+        this.parentName = this.preNodeOptions[index].label
       } else {
         this.preNodeIndex = 0
         this.preNodeDisplay = ''
@@ -357,6 +441,7 @@ export default {
       if (selected) {
         this.prevId = selected.id
         this.preNodeDisplay = selected.label
+        this.parentName = selected.label || ''
 
         // 如果选择了上级节点，加载其坐标用于档距计算
         if (selected.id) {
@@ -374,6 +459,9 @@ export default {
           this.prevLatitude = ''
           this.calcSpanLength()
         }
+
+        // 重新生成设备名称
+        this.generateDeviceName()
       }
     },
 

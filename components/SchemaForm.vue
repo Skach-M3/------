@@ -40,14 +40,14 @@
           </view>
 
           <!-- select 单选下拉 -->
-          <picker v-else-if="field.type === 'select'" :range="getLabelsArray(field.options)"
-            :value="getPickerIndex(field.options, modelValue[field.key])"
+          <picker v-else-if="field.type === 'select'" :disabled="field.editable === false"
+            :range="getLabelsArray(field.options)" :value="getPickerIndex(field.options, modelValue[field.key])"
             @change="onPickerChange(field.key, field.options, $event)">
-            <view class="picker-box">
+            <view class="picker-box" :class="{ 'picker-disabled': field.editable === false }">
               <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
                 {{ getDisplayLabel(field.options, modelValue[field.key]) || ('请选择' + field.label) }}
               </text>
-              <text class="picker-arrow">›</text>
+              <text v-if="field.editable !== false" class="picker-arrow">›</text>
             </view>
           </picker>
 

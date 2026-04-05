@@ -6,12 +6,14 @@
  */
 
 import poleSchema from './pole.js'
+import poleSwitchgear from './poleSwitchgear.js'
 // 后续新增设备类型时在此导入并注册：
 // import wireSchema from './wire.js'
 // import switchSchema from './switch.js'
 
 const schemas = {
     pole: poleSchema,
+    pole_switchgear: poleSwitchgear,
     // wire: wireSchema,
     // switch: switchSchema,
 }

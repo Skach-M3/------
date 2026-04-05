@@ -14,11 +14,33 @@
       <view class="card-header">
         <text class="card-title">关联设备</text>
       </view>
-      <view class="children-btns">
-        <view v-for="child in currentSchema.children" :key="child.deviceType" class="child-btn"
-          @click="goAddChild(child)">
-          <text class="child-btn-icon">+</text>
-          <text class="child-btn-text">添加{{ child.label }}</text>
+
+      <!-- 按子设备类型分组 -->
+      <view v-for="child in currentSchema.children" :key="child.deviceType" class="child-group">
+        <!-- 子设备类型标题 + 添加按钮 -->
+        <view class="child-group-header">
+          <text class="child-group-title">{{ child.label }}</text>
+          <view class="child-add-link" @click="goAddChild(child.deviceType)">
+            <text class="child-add-icon">+</text>
+            <text class="child-add-text">添加</text>
+          </view>
+        </view>
+
+        <!-- 该类型下已有的子设备列表 -->
+        <view v-if="childDevicesMap[child.deviceType] && childDevicesMap[child.deviceType].length > 0">
+          <view v-for="item in childDevicesMap[child.deviceType]" :key="item.id" class="child-item"
+            @click="goEditChild(item)" @longpress="confirmDeleteChild(item, child.label)">
+            <view class="child-item-info">
+              <text class="child-item-name">{{ item.name || '未命名' }}</text>
+              <text class="child-item-desc">点击编辑 · 长按删除</text>
+            </view>
+            <text class="child-item-arrow">›</text>
+          </view>
+        </view>
+
+        <!-- 空状态 -->
+        <view v-else class="child-empty">
+          <text class="child-empty-text">暂无{{ child.label }}，点击上方添加</text>
         </view>
       </view>
     </view>
@@ -44,8 +66,8 @@ export default {
       // 路由参数
       lineId: '',
       deviceType: '',
-      deviceId: '',   // 非空表示编辑模式
-      parentId: '',    // 子设备的父设备 ID
+      deviceId: '',
+      parentId: '',
 
       // 链表 & 排序
       prevId: '',
@@ -61,7 +83,12 @@ export default {
       attributes: {},
 
       // 当前 schema 定义
-      currentSchema: { label: '', fields: [], children: [] }
+      currentSchema: { label: '', fields: [], children: [] },
+
+      // 子设备列表，按 deviceType 分组
+      childDevicesMap: {},
+      subType: '',
+      parentName: ''
     }
   },
 
@@ -81,6 +108,10 @@ export default {
     this.deviceType = query.deviceType || 'pole'
     this.deviceId = query.deviceId || ''
     this.parentId = query.parentId || ''
+    // 接收子类型和父设备名称
+    this.subType = query.subType ? decodeURIComponent(query.subType) : ''
+    this.parentName = query.parentName ? decodeURIComponent(query.parentName) : ''
+    console.log('deviceType:', this.deviceType, 'schema:', getSchema(this.deviceType))
 
     // 接收地图页传来的坐标（WGS84），作为预填值
     if (query.lat) this.latitude = query.lat
@@ -98,6 +129,13 @@ export default {
       this.loadDevice()
     } else {
       this.initNewDevice()
+    }
+  },
+
+  // ★ 新增：每次页面显示时刷新子设备列表（从子设备编辑页返回时触发）
+  onShow() {
+    if (this.deviceId && this.currentSchema.children?.length > 0) {
+      this.loadChildDevices()
     }
   },
 
@@ -175,12 +213,49 @@ export default {
           }
           // 等 initDefaults 的 emit 生效后再同步坐标
           this.$nextTick(() => {
+            // ★ 在默认值初始化之后，再覆盖写入子类型相关字段
+            this.applySubTypeDefaults()
             this.syncCoordsToAttributes()
             this.calcSpanLength()
           })
         })
       } catch (e) {
         console.error('初始化新设备失败:', e)
+      }
+    },
+
+    /* ========== ★ 子设备加载 ========== */
+
+    /** 按类型分组加载子设备 */
+    async loadChildDevices() {
+      const children = this.currentSchema.children || []
+      const map = {}
+      for (const child of children) {
+        try {
+          const list = await deviceDAO.findByParent(
+            this.lineId,
+            child.deviceType,
+            this.deviceId
+          )
+          map[child.deviceType] = list
+        } catch (e) {
+          console.error(`加载子设备[${child.deviceType}]失败:`, e)
+          map[child.deviceType] = []
+        }
+      }
+      this.childDevicesMap = map
+    },
+
+    // 根据 subType 自动填入分类和名称
+    applySubTypeDefaults() {
+      if (!this.subType || !this.currentSchema.subTypeField) return
+
+      // 填入分类字段
+      this.$set(this.attributes, this.currentSchema.subTypeField, this.subType)
+
+      // 自动拼接名称 = 父设备名 + 子类型名
+      if (this.parentName && this.currentSchema.nameField) {
+        this.$set(this.attributes, this.currentSchema.nameField, this.parentName + this.subType)
       }
     },
 
@@ -278,14 +353,25 @@ export default {
       try {
         if (this.deviceId) {
           await deviceDAO.update(this.deviceId, deviceData)
+          uni.showToast({ title: '保存成功', icon: 'success' })
+          // setTimeout(() => { uni.navigateBack() }, 800)
         } else {
           const newId = await deviceDAO.insert(deviceData)
           this.deviceId = newId
-          // 保存成功后 showChildren 会自动变为 true（如果 schema 有 children）
+          uni.showToast({ title: '保存成功', icon: 'success' })
+
+          // ★ 新增判断：如果有子设备类型，保存后留在当前页，加载子设备区域
+          if (this.currentSchema.children?.length > 0) {
+            // 更新标题为编辑模式
+            uni.setNavigationBarTitle({
+              title: '编辑' + this.currentSchema.label
+            })
+            this.loadChildDevices()
+            // 不 navigateBack，让用户继续添加子设备
+          } else {
+            setTimeout(() => { uni.navigateBack() }, 800)
+          }
         }
-        uni.showToast({ title: '保存成功', icon: 'success' })
-        // 延迟返回，让用户看到提示
-        setTimeout(() => { uni.navigateBack() }, 800)
       } catch (e) {
         console.error('保存失败:', e)
         uni.showToast({ title: '保存失败', icon: 'none' })
@@ -294,9 +380,65 @@ export default {
 
     /* ========== 子设备跳转 ========== */
 
-    goAddChild(child) {
-      const url = `/pages/device/edit?lineId=${this.lineId}&deviceType=${child.deviceType}&parentId=${this.deviceId}`
+    /** 添加子设备 —— 跳转到同一个 edit 页面 */
+    goAddChild(childType) {
+      const childSchema = getSchema(childType)
+      const parentName = this.attributes[this.currentSchema.nameField] || ''
+
+      if (childSchema.subTypes && childSchema.subTypes.length > 0) {
+        // 有子类型 → 弹出 ActionSheet 让用户选
+        const itemList = childSchema.subTypes.map(st => st.label)
+
+        uni.showActionSheet({
+          title: '请选择设备类型',
+          itemList,
+          success: (res) => {
+            const subType = childSchema.subTypes[res.tapIndex].value
+            uni.navigateTo({
+              url: `/pages/device/edit?lineId=${this.lineId}`
+                + `&deviceType=${childType}`
+                + `&parentId=${this.deviceId}`
+                + `&subType=${encodeURIComponent(subType)}`
+                + `&parentName=${encodeURIComponent(parentName)}`
+            })
+          }
+        })
+      } else {
+        // 无子类型 → 直接跳转（兼容其他设备）
+        uni.navigateTo({
+          url: `/pages/device/edit?lineId=${this.lineId}`
+            + `&deviceType=${childType}`
+            + `&parentId=${this.deviceId}`
+            + `&parentName=${encodeURIComponent(parentName)}`
+        })
+      }
+    },
+
+    /** 编辑已有子设备 */
+    goEditChild(item) {
+      const url = `/pages/device/edit?lineId=${this.lineId}&deviceType=${item.device_type}&deviceId=${item.id}`
       uni.navigateTo({ url })
+    },
+
+    /** ★ 新增：长按删除子设备 */
+    confirmDeleteChild(item, label) {
+      uni.showModal({
+        title: '删除确认',
+        content: `确定删除「${item.name || label}」吗？此操作不可恢复。`,
+        confirmColor: '#e64340',
+        success: async (res) => {
+          if (res.confirm) {
+            try {
+              await deviceDAO.deleteWithChildren(item.id)
+              await this.loadChildDevices()
+              uni.showToast({ title: '已删除', icon: 'success' })
+            } catch (e) {
+              console.error('删除子设备失败:', e)
+              uni.showToast({ title: '删除失败', icon: 'none' })
+            }
+          }
+        }
+      })
     }
   }
 }
@@ -333,34 +475,96 @@ export default {
   color: #333;
 }
 
-/* ---- 子设备入口 ---- */
-.children-btns {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 20rpx;
+/* ---- 子设备分组 ---- */
+.child-group {
+  margin-bottom: 24rpx;
 }
 
-.child-btn {
+.child-group:last-child {
+  margin-bottom: 0;
+}
+
+.child-group-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+
+.child-group-title {
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #555;
+}
+
+.child-add-link {
   display: flex;
   flex-direction: row;
   align-items: center;
-  padding: 20rpx 32rpx;
-  border: 1rpx dashed #2979ff;
-  border-radius: 12rpx;
-  background: #f0f7ff;
 }
 
-.child-btn-icon {
-  font-size: 36rpx;
+.child-add-icon {
+  font-size: 32rpx;
   color: #2979ff;
-  margin-right: 8rpx;
   font-weight: bold;
+  margin-right: 4rpx;
 }
 
-.child-btn-text {
-  font-size: 28rpx;
+.child-add-text {
+  font-size: 26rpx;
   color: #2979ff;
+}
+
+/* ---- 子设备列表项 ---- */
+.child-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 16rpx;
+  background: #f8f9fa;
+  border-radius: 12rpx;
+  margin-bottom: 12rpx;
+}
+
+.child-item:active {
+  background: #eef1f5;
+}
+
+.child-item-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.child-item-name {
+  font-size: 28rpx;
+  color: #333;
+  margin-bottom: 4rpx;
+}
+
+.child-item-desc {
+  font-size: 22rpx;
+  color: #bbb;
+}
+
+.child-item-arrow {
+  font-size: 36rpx;
+  color: #ccc;
+}
+
+/* ---- 空状态 ---- */
+.child-empty {
+  padding: 24rpx;
+  text-align: center;
+  background: #fafafa;
+  border-radius: 12rpx;
+  border: 1rpx dashed #ddd;
+}
+
+.child-empty-text {
+  font-size: 24rpx;
+  color: #bbb;
 }
 
 /* ---- 底部保存栏 ---- */

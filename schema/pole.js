@@ -5,7 +5,10 @@ export default {
   icon: '/static/icons/pole.png',
   category: '10kV',
   nameField: 'pole_name',   // 该字段的值会同步写入 t_device.name
-  children: ['pole_switchgear'],  // 可挂载的子设备类型
+  children: [
+    { deviceType: 'pole_switchgear', label: '柱上开关' }
+  ],  // 可挂载的子设备类型
+  isAvailablePreNode: true,  // 是否出现在上级节点待选
 
   fields: [
     // ===== 基础信息 =====

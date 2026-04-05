@@ -15,7 +15,7 @@
       :change:debugMarker="mapModule.onDebugMarkerChange"></view>
 
     <!-- 右侧悬浮工具栏 -->
-    <view class="right-tools">
+    <view class="right-tools" v-show="!isMovingDevice">
       <!-- 组1：功能菜单 -->
       <view class="tool-group">
         <view class="tool-item" @click="toast('数据')">
@@ -56,7 +56,7 @@
     </view>
 
     <!-- 底部中间悬浮加号及展开菜单，当设备面板出现时隐藏 -->
-    <view class="bottom-fab-wrapper" v-show="!showDevicePanel">
+    <view class="bottom-fab-wrapper" v-show="!showDevicePanel && !isMovingDevice">
       <!-- 展开的子按钮 -->
       <view class="fab-menu">
         <view class="fab-sub-item" v-for="(item, index) in fabItems" :key="index" :style="getFabItemStyle(index)"
@@ -72,7 +72,7 @@
     </view>
 
     <!-- 底部设备信息面板 -->
-    <view class="device-panel-wrapper" v-if="showDevicePanel">
+    <view class="device-panel-wrapper" v-if="showDevicePanel && !isMovingDevice">
       <!-- 左上角切换按钮 -->
       <view class="panel-switch-btns">
         <view class="switch-btn" @click="prevDevice">
@@ -98,6 +98,16 @@
           <view class="action-item" @click="handleDetails">详情</view>
           <view class="action-item no-border" @click="handleMove">移动</view>
         </view>
+      </view>
+    </view>
+
+    <!-- 移动设备时的底部操作按钮 -->
+    <view class="move-actions-wrapper" v-if="isMovingDevice">
+      <view class="move-btn cancel-btn" @click="cancelMove">
+        <text>取消</text>
+      </view>
+      <view class="move-btn confirm-btn" @click="confirmMove">
+        <text>确定</text>
       </view>
     </view>
 
@@ -211,6 +221,27 @@ const onDeviceClick = (deviceInfo) => {
   showDevicePanel.value = true;
 };
 
+const isMovingDevice = ref(false)
+// 取消按钮点击事件
+const cancelMove = () => {
+  // 1. 隐藏底部操作按钮
+  isMovingDevice.value = false;
+  showDevicePanel.value = false;
+
+  // 2. 其他取消逻辑（例如：恢复设备原来的位置、退出移动模式等）
+  console.log('已取消移动');
+}
+
+// 确定按钮点击事件
+const confirmMove = () => {
+  // 1. 隐藏底部操作按钮
+  isMovingDevice.value = false;
+  showDevicePanel.value = false;
+
+  // 2. 其他确定逻辑（例如：更新保存设备的新位置）
+  console.log('已确定移动');
+}
+
 // 面板相关的预留操作方法
 const prevDevice = () => {
   console.log('点击了上一个设备');
@@ -232,6 +263,7 @@ const handleDetails = () => {
 
 const handleMove = () => {
   console.log('点击了移动', currentDeviceInfo.value);
+  isMovingDevice.value = true;
 };
 
 interface MapConfig {
@@ -310,6 +342,8 @@ const handleMapMessage = (data: any) => {
   if (!data) return;
 
   if (data.type === 'deviceClick') {
+    // 如果正在移动设备，忽略其他设备的点击
+    if (isMovingDevice.value) return;
     // 点击了设备图标
     console.log('点击了设备:', data.device);
     const device = data.device;
@@ -1147,5 +1181,49 @@ export default {
 /* 最后一个按钮去掉右侧分割线 */
 .action-item.no-border {
   border-right: none;
+}
+
+/* 移动设备时的底部操作按钮容器 */
+.move-actions-wrapper {
+  position: fixed;
+  bottom: 60px;
+  /* 和底部保持一定距离 */
+  left: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  /* 水平居中 */
+  align-items: center;
+  gap: 40px;
+  /* 两个按钮之间的间距 */
+  z-index: 999;
+}
+
+/* 按钮基础样式 */
+.move-btn {
+  width: 120px;
+  height: 44px;
+  border-radius: 22px;
+  /* 圆角矩形 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+/* 取消按钮 */
+.cancel-btn {
+  background-color: #ffffff;
+  color: #333333;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* 确定按钮 */
+.confirm-btn {
+  background-color: #2A85FF;
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(42, 133, 255, 0.3);
 }
 </style>

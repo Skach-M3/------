@@ -96,6 +96,41 @@
         </view>
       </block>
     </block>
+    <!-- ===== 照片区域 ===== -->
+    <view v-if="showPhotoSection" class="photo-section">
+      <!-- 区域标题 -->
+      <view class="section-header">
+        <text class="section-title">照片</text>
+      </view>
+
+      <!-- 3列网格 -->
+      <view class="photo-grid">
+        <!-- 遍历所有槽位 -->
+        <!-- 遍历所有槽位 -->
+        <view v-for="slot in allPhotoSlots" :key="slot.key" class="photo-grid-item">
+          <view class="photo-slot" @click="onSlotTap(slot)">
+            <!-- 已拍照：缩略图 -->
+            <template v-if="photos[slot.key]">
+              <image :src="photos[slot.key]" mode="aspectFill" class="photo-thumb" />
+              <!-- 已拍照角标 -->
+              <view class="photo-taken-badge">✓</view>
+            </template>
+            <!-- 未拍照：占位符 -->
+            <view v-else class="photo-placeholder">
+              <image :src="cameraIconSvg" class="camera-icon-svg" mode="aspectFit" />
+            </view>
+          </view>
+          <text class="photo-label">{{ slot.label }}</text>
+        </view>
+
+        <!-- 新增槽位「+」按钮 -->
+        <view v-if="allowExtraSlot" class="photo-grid-item">
+          <view class="photo-slot add-slot" @click="onAddSlotTap">
+            <text class="add-icon">+</text>
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -119,10 +154,37 @@ export default {
     parentName: {
       type: String,
       default: ''
+    },
+    // 已拍照片，结构：{ slotKey: filePath }
+    photos: {
+      type: Object,
+      default: () => ({})
     }
   },
 
   emits: ['update:modelValue'],
+
+  // ===== data 新增 =====
+  data() {
+    return {
+      // 用户自定义新增的照片槽位
+      extraPhotoSlots: [],
+
+      // 已拍照片操作面板
+      actionSheet: {
+        visible: false,
+        slot: null // { key, label, filePath }
+      },
+
+      // 新增槽位弹窗
+      addSlotModal: {
+        visible: false,
+        label: ''
+      },
+      // 相机图标 base64 SVG
+      cameraIconSvg: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z'/%3E%3Ccircle cx='12' cy='13' r='4'/%3E%3C/svg%3E"
+    };
+  },
 
   computed: {
     compositePrefix() {
@@ -134,6 +196,22 @@ export default {
         return value.split('#')[1] || ''
       }
       return value
+    },
+
+    // 合并 schema 定义的槽位 + 用户自定义槽位
+    allPhotoSlots() {
+      const base = this.schema?.photoSlots || [];
+      return [...base, ...this.extraPhotoSlots];
+    },
+
+    // 是否显示照片区域
+    showPhotoSection() {
+      return Array.isArray(this.schema?.photoSlots) && this.schema.photoSlots.length > 0;
+    },
+
+    // 是否允许新增自定义槽位
+    allowExtraSlot() {
+      return !!this.schema?.extraPhotoSlot;
     }
   },
 
@@ -227,6 +305,65 @@ export default {
     isMultiSelected(key, optValue) {
       const val = this.modelValue[key]
       return Array.isArray(val) && val.includes(optValue)
+    },
+
+    // 点击未拍照占位符
+    onSlotTap(slot) {
+      const filePath = this.photos[slot.key];
+      if (filePath) {
+        // 已拍照 → 打开操作面板
+        this.actionSheet.slot = { key: slot.key, label: slot.label, filePath };
+        this.actionSheet.visible = true;
+      } else {
+        // 未拍照 → 直接触发拍照
+        this.$emit('take-photo', { key: slot.key, label: slot.label });
+      }
+    },
+
+    // ActionSheet 选项
+    onPreviewPhoto() {
+      const { key, filePath } = this.actionSheet.slot;
+      this.$emit('preview-photo', { key, filePath });
+      this.closeActionSheet();
+    },
+
+    onRetakePhoto() {
+      const { key, label } = this.actionSheet.slot;
+      this.$emit('take-photo', { key, label });
+      this.closeActionSheet();
+    },
+
+    onDeletePhoto() {
+      const { key } = this.actionSheet.slot;
+      this.$emit('delete-photo', { key });
+      this.closeActionSheet();
+    },
+
+    closeActionSheet() {
+      this.actionSheet.visible = false;
+      this.actionSheet.slot = null;
+    },
+
+    // 新增槽位弹窗
+    onAddSlotTap() {
+      this.addSlotModal.label = '';
+      this.addSlotModal.visible = true;
+    },
+
+    onConfirmAddSlot() {
+      const label = this.addSlotModal.label.trim();
+      if (!label) return;
+      this.extraPhotoSlots.push({
+        key: `extra_${Date.now()}`,
+        label
+      });
+      this.addSlotModal.visible = false;
+      this.addSlotModal.label = '';
+    },
+
+    onCancelAddSlot() {
+      this.addSlotModal.visible = false;
+      this.addSlotModal.label = '';
     },
 
     /* ========== 级联逻辑 ========== */
@@ -454,6 +591,112 @@ export default {
 
 .option-active .option-text {
   color: #2979ff;
+}
+
+/* ===== 照片区域 ===== */
+.photo-section {
+  margin-top: 24rpx;
+}
+
+.photo-grid {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 16rpx 24rpx;
+  gap: 16rpx;
+}
+
+.photo-grid-item {
+  width: calc((100% - 32rpx) / 3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.photo-slot {
+  width: 100%;
+  padding-bottom: 100%;
+  position: relative;
+  border-radius: 12rpx;
+  overflow: hidden;
+  background-color: #f5f5f5;
+  border: 2rpx dashed #cccccc;
+}
+
+/* 已拍照状态 - 去掉虚线边框 */
+.photo-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 12rpx;
+}
+
+/* 已拍照角标 */
+.photo-taken-badge {
+  position: absolute;
+  right: 8rpx;
+  bottom: 8rpx;
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 50%;
+  background-color: #22c55e;
+  color: #ffffff;
+  font-size: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 未拍照占位 */
+.photo-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 相机 SVG 图标 */
+.camera-icon-svg {
+  width: 56rpx;
+  height: 56rpx;
+  opacity: 0.5;
+}
+
+.photo-label {
+  font-size: 22rpx;
+  color: #666666;
+  margin-top: 8rpx;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.add-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-style: dashed;
+}
+
+.add-icon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 64rpx;
+  color: #999999;
+  line-height: 1;
 }
 
 /* ---- 下拉选择器 ---- */

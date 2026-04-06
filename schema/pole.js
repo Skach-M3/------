@@ -255,10 +255,10 @@ export default {
   ],
 
   photoSlots: [
-    { key: 'overview', label: '全貌', required: true, max: 3 },
-    { key: 'pole_head', label: '杆头', required: false, max: 3 },
-    { key: 'nameplate', label: '铭牌', required: false, max: 3 },
-    { key: 'wire_load', label: '导线负荷侧', required: false, max: 3 }
+    { key: 'overview', label: '全貌', required: true },
+    { key: 'pole_head', label: '杆头', required: false },
+    { key: 'nameplate', label: '铭牌', required: false },
+    { key: 'wire_load', label: '导线负荷侧', required: false }
   ],
   extraPhotoSlot: true
 }

@@ -209,7 +209,7 @@ export default {
     }
   },
 
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'update:modelValue', 'take-photo', 'preview-photo', 'delete-photo'],
 
   // ===== data 新增 =====
   data() {
@@ -671,6 +671,11 @@ export default {
   background-color: #f5f5f5;
   border: 2rpx dashed #cccccc;
   box-sizing: border-box;
+}
+
+/* 已拍照时去除虚线边框 */
+.photo-slot-taken {
+  border: none;
 }
 
 /* 已拍照状态 - 去掉虚线边框 */

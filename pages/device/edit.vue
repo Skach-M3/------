@@ -26,7 +26,8 @@
         <text class="card-title">{{ currentSchema.label }}信息</text>
       </view>
       <schema-form ref="formRef" :schema="currentSchema" v-model="attributes" :lineName="lineName"
-        :parentName="parentName" />
+        :parentName="parentName" :photos="photos" @take-photo="onTakePhoto" @preview-photo="onPreviewPhoto"
+        @delete-photo="onDeletePhoto" />
     </view>
 
     <!-- 子设备入口（主设备已保存 且 schema 定义了 children 时显示） -->
@@ -114,7 +115,10 @@ export default {
       // 上级节点选择
       preNodeOptions: [],
       preNodeIndex: 0,
-      preNodeDisplay: ''
+      preNodeDisplay: '',
+
+      // 照片数据，结构：{ slotKey: filePath }
+      photos: {}
 
     }
   },
@@ -191,11 +195,32 @@ export default {
         this.parentId = device.parent_id || ''
         this.prevId = device.prev_id || ''
         this.sortOrder = device.sort_order || 1
-        this.attributes = device.attributes
+
+        const attrs = device.attributes
           ? (typeof device.attributes === 'string'
             ? JSON.parse(device.attributes)
             : device.attributes)
           : {}
+
+        // 从 attributes 中提取照片数据和自定义槽位，不污染表单字段
+        if (attrs._photos) {
+          this.photos = attrs._photos
+          delete attrs._photos
+        } else {
+          this.photos = {}
+        }
+
+        const extraSlots = attrs._extraPhotoSlots || []
+        delete attrs._extraPhotoSlots
+
+        this.attributes = attrs
+
+        // 恢复自定义槽位到 SchemaForm
+        this.$nextTick(() => {
+          if (this.$refs.formRef && extraSlots.length > 0) {
+            this.$refs.formRef.extraPhotoSlots = extraSlots
+          }
+        })
 
         // 加载上一个设备的坐标，用于档距计算
         if (this.prevId) {
@@ -248,6 +273,7 @@ export default {
         }
 
         this.attributes = {}
+        this.photos = {}  // 重置照片
 
         // 加载上级节点选项
         await this.loadPreNodeOptions()
@@ -345,6 +371,87 @@ export default {
       return name
     },
 
+    /* ========== 照片处理 ========== */
+
+    /** 拍照（未拍照点击 / 重新拍照） */
+    async onTakePhoto({ key, label }) {
+      try {
+        // 调用相机
+        const chooseRes = await new Promise((resolve, reject) => {
+          uni.chooseImage({
+            count: 1,
+            sourceType: ['camera'],
+            success: resolve,
+            fail: reject
+          })
+        })
+
+        const tempFilePath = chooseRes.tempFilePaths[0]
+
+        // 保存到持久化存储
+        const saveRes = await new Promise((resolve, reject) => {
+          uni.saveFile({
+            tempFilePath,
+            success: resolve,
+            fail: reject
+          })
+        })
+
+        const savedPath = saveRes.savedFilePath
+
+        // 如果是重新拍照，先删除旧文件
+        const oldPath = this.photos[key]
+        if (oldPath) {
+          this.tryRemoveFile(oldPath)
+        }
+
+        // 更新照片数据
+        this.photos = { ...this.photos, [key]: savedPath }
+        uni.showToast({ title: '拍照成功', icon: 'success' })
+      } catch (e) {
+        // 用户取消拍照，不提示
+        if (e && e.errMsg && e.errMsg.indexOf('cancel') > -1) return
+        console.error('拍照失败:', e)
+        uni.showToast({ title: '拍照失败', icon: 'none' })
+      }
+    },
+
+    /** 查看照片 */
+    onPreviewPhoto({ key, filePath }) {
+      uni.previewImage({
+        urls: [filePath],
+        current: filePath
+      })
+    },
+
+    /** 删除照片 */
+    onDeletePhoto({ key }) {
+      const filePath = this.photos[key]
+      if (filePath) {
+        this.tryRemoveFile(filePath)
+      }
+
+      const newPhotos = { ...this.photos }
+      delete newPhotos[key]
+      this.photos = newPhotos
+
+      uni.showToast({ title: '已删除', icon: 'success' })
+    },
+
+    /**
+     * 安全删除已保存文件（忽略"路径不存在"等错误）
+     */
+    tryRemoveFile(filePath) {
+      if (!filePath) return
+      uni.removeSavedFile({
+        filePath,
+        fail: (e) => {
+          // 路径不存在、已删除等情况，静默忽略
+          console.warn('删除文件忽略:', e.errMsg || e)
+        }
+      })
+    },
+
     /* ========== ★ 子设备加载 ========== */
 
     /** 按类型分组加载子设备 */
@@ -372,11 +479,17 @@ export default {
       if (!this.subType || !this.currentSchema.subTypeField) return
 
       // 填入分类字段
-      this.$set(this.attributes, this.currentSchema.subTypeField, this.subType)
+      this.attributes = {
+        ...this.attributes,
+        [this.currentSchema.subTypeField]: this.subType
+      }
 
       // 自动拼接名称 = 父设备名 + 子类型名
       if (this.parentName && this.currentSchema.nameField) {
-        this.$set(this.attributes, this.currentSchema.nameField, this.parentName + this.subType)
+        this.attributes = {
+          ...this.attributes,
+          [this.currentSchema.nameField]: this.parentName + this.subType
+        }
       }
     },
 
@@ -536,13 +649,25 @@ export default {
         return
       }
 
-      // 2. 从 schema.nameField 提取设备名称，用于列表展示
+      // 2. 从 schema.nameField 提取设备名称
       const nameField = this.currentSchema.nameField
       const name = (nameField && this.attributes[nameField])
         ? String(this.attributes[nameField])
         : this.currentSchema.label
 
-      // 3. 组装设备数据
+      // 3. 组装 attributes，注入照片数据和自定义槽位
+      const attrsToSave = { ...this.attributes }
+
+      if (Object.keys(this.photos).length > 0) {
+        attrsToSave._photos = this.photos
+      }
+
+      const extraSlots = this.$refs.formRef ? this.$refs.formRef.extraPhotoSlots : []
+      if (extraSlots.length > 0) {
+        attrsToSave._extraPhotoSlots = extraSlots
+      }
+
+      // 4. 组装设备数据
       const deviceData = {
         line_id: this.lineId,
         device_type: this.deviceType,
@@ -552,15 +677,14 @@ export default {
         longitude: this.longitude,
         latitude: this.latitude,
         sort_order: this.sortOrder,
-        attributes: JSON.stringify(this.attributes)
+        attributes: JSON.stringify(attrsToSave)
       }
 
-      // 4. 写入数据库
+      // 5. 写入数据库
       try {
         if (this.deviceId) {
           await deviceDAO.update(this.deviceId, deviceData)
           uni.showToast({ title: '保存成功', icon: 'success' })
-          // setTimeout(() => { uni.navigateBack() }, 800)
         } else {
           const newId = await deviceDAO.insert(deviceData)
           this.deviceId = newId

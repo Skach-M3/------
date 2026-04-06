@@ -221,13 +221,6 @@ const currentDeviceInfo = ref({
   deviceType: ''
 });
 
-// 接收 RenderJS 传来的设备点击事件
-const onDeviceClick = (deviceInfo) => {
-  // 直接更新数据，如果面板已打开，视图会无缝更新；如果未打开，则显示面板
-  currentDeviceInfo.value = deviceInfo;
-  showDevicePanel.value = true;
-};
-
 const isMovingDevice = ref(false)
 // 取消按钮点击事件
 const cancelMove = () => {
@@ -750,7 +743,7 @@ export default {
       }else if (config.actionType === 'flyTo') {
         // 如果当前缩放太小，自动放大到 16 级；否则保持当前缩放
         var targetZoom = Math.max(this.map.getZoom(), 16);
-        this.map.flyTo(config.center, targetZoom, { duration: 0.8 });
+        this.map.flyTo(config.center, targetZoom, { duration: 0.5 });
       }
     },
 

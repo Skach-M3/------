@@ -213,10 +213,12 @@ const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: numbe
 const showDevicePanel = ref(false);
 // 当前选中的设备信息
 const currentDeviceInfo = ref({
+  id: '',
   name: '',
   distance: '',
   lng: '',
-  lat: ''
+  lat: '',
+  deviceType: ''
 });
 
 // 接收 RenderJS 传来的设备点击事件
@@ -263,7 +265,17 @@ const handleNavigate = () => {
 };
 
 const handleDetails = () => {
-  console.log('点击了详情', currentDeviceInfo.value);
+  const info = currentDeviceInfo.value;
+  console.log(info);
+  const url = `/pages/device/edit?lineId=${lineId.value}&lineName=${encodeURIComponent(lineName.value)}&deviceType=${info.deviceType}&lat=${info.lat}&lng=${info.lng}&deviceId=${info.id}`;
+
+  uni.navigateTo({
+    url,
+    fail: (err) => {
+      console.error('跳转失败:', err);
+      uni.showToast({ title: '页面跳转失败', icon: 'none' });
+    }
+  });
 };
 
 const handleMove = () => {
@@ -376,10 +388,12 @@ const handleMapMessage = (data: any) => {
       : '未定位';
 
     currentDeviceInfo.value = {
+      id: device.id || '',
       name: device.name || '未知设备',
       distance: dist,
       lng: Number(device.lng).toFixed(6),
-      lat: Number(device.lat).toFixed(6)
+      lat: Number(device.lat).toFixed(6),
+      deviceType: device.device_type || ''
     };
     showDevicePanel.value = true;
   } else if (data.type === 'click') {
@@ -779,7 +793,7 @@ export default {
         var marker = L.marker(latlng, { icon: icon }).addTo(this.deviceLayerGroup);
 
         // 用 IIFE 捕获当前循环变量的值，避免闭包引用最后一次迭代
-        ;(function(capturedName, capturedLat, capturedLng, capturedType) {
+        ;(function(capturedId, capturedName, capturedLat, capturedLng, capturedType) {
           // 绑定点击事件，通过已有的 receiveRenderData 统一发送给逻辑层
           marker.on('click', function(e) {
             // 阻止事件冒泡到地图底图上（防止触发地图的空白点击）
@@ -789,6 +803,7 @@ export default {
             self.$ownerInstance.callMethod('receiveRenderData', {
               type: 'deviceClick',
               device: {
+                id: capturedId,
                 name: capturedName,
                 lat: capturedLat,
                 lng: capturedLng,
@@ -796,7 +811,7 @@ export default {
               }
             });
           });
-        })(displayName, lat, lng, device.device_type);
+        })(device.id,displayName, lat, lng, device.device_type);
         
         // 构建设备映射表，用于后续连线
         deviceMap[device.id] = {

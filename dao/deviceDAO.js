@@ -79,6 +79,23 @@ const deviceDAO = {
     },
 
     /**
+     * 仅更新设备的经纬度坐标
+     * @param {string} id 设备ID
+     * @param {string} longitude 经度
+     * @param {string} latitude 纬度
+     */
+    async updateCoordinates(id, longitude, latitude) {
+        const now = Date.now()
+        const sql = `UPDATE t_device SET
+        longitude = ?,
+        latitude = ?,
+        sync_status = 0,
+        updated_at = ?
+    WHERE id = ?`
+        await dbHelper.execute(sql, [longitude, latitude, now, id])
+    },
+
+    /**
      * 根据 ID 查询单条设备
      */
     async findById(id) {

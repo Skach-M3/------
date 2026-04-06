@@ -13,7 +13,18 @@
     <view id="map" class="map-container" :prop="mapConfig" :change:prop="mapModule.updateMapConfig"
       :devicesProp="devicesProp" :change:devicesProp="mapModule.onDevicesChange" :debugMarker="debugMarkerProp"
       :change:debugMarker="mapModule.onDebugMarkerChange" :showNamesProp="showDeviceNames"
-      :change:showNamesProp="mapModule.onShowNamesChange"></view>
+      :change:showNamesProp="mapModule.onShowNamesChange" :movingDeviceIdProp="movingDeviceIdProp"
+      :change:movingDeviceIdProp="mapModule.onMovingDeviceIdChange" :confirmMoveProp="confirmMoveProp"
+      :change:confirmMoveProp="mapModule.onConfirmMoveChange"></view>
+
+    <!-- 移动设备时的十字准星 -->
+    <view class="move-crosshair" v-if="isMovingDevice">
+      <view class="crosshair-icon">
+        <view class="crosshair-h"></view>
+        <view class="crosshair-v"></view>
+        <view class="crosshair-dot"></view>
+      </view>
+    </view>
 
     <!-- 右侧悬浮工具栏 -->
     <view class="right-tools" v-show="!isMovingDevice">
@@ -222,25 +233,72 @@ const currentDeviceInfo = ref({
 });
 
 const isMovingDevice = ref(false)
+
+const confirmMoveProp = ref(0);
+
+const movingDeviceOriginal = ref<{ id: string; lat: number; lng: number; name: string } | null>(null);
+const movingDeviceIdProp = ref('');
 // 取消按钮点击事件
 const cancelMove = () => {
-  // 1. 隐藏底部操作按钮
+  // 退出移动模式
   isMovingDevice.value = false;
   showDevicePanel.value = false;
 
-  // 2. 其他取消逻辑（例如：恢复设备原来的位置、退出移动模式等）
-  console.log('已取消移动');
-}
+  // 通知 RenderJS 恢复显示设备 marker 和连线
+  movingDeviceIdProp.value = '';
 
+  // 飞回设备原位置
+  if (movingDeviceOriginal.value) {
+    mapConfig.center = [movingDeviceOriginal.value.lat, movingDeviceOriginal.value.lng];
+    mapConfig.actionType = 'flyTo';
+    mapConfig.actionId++;
+  }
+
+  movingDeviceOriginal.value = null;
+  console.log('已取消移动');
+};
 // 确定按钮点击事件
 const confirmMove = () => {
-  // 1. 隐藏底部操作按钮
+  console.log('确认移动设备');
+  if (!movingDeviceOriginal.value) return;
+  // 触发 RenderJS 获取当前地图中心坐标
+  confirmMoveProp.value = Date.now();
+};
+
+const onConfirmMoveResult = async (centerData: { lat: number; lng: number }) => {
+  console.log("onConfirmMoveResult", centerData);
+  if (!movingDeviceOriginal.value) return;
+
+  const deviceId = movingDeviceOriginal.value.id;
+  const newLng = centerData.lng;
+  const newLat = centerData.lat;
+
+  console.log(`确认移动设备 ${deviceId} → [${newLng.toFixed(6)}, ${newLat.toFixed(6)}]`);
+
+  try {
+    // 更新本地数据库坐标
+    await deviceDAO.updateCoordinates(deviceId, String(newLng), String(newLat));
+
+    uni.showToast({ title: '设备移动成功', icon: 'success' });
+
+    // 重新从数据库加载设备列表 → 触发 RenderJS 重绘
+    await loadDevices();
+
+    // 退出移动模式
+    exitMoveMode();
+  } catch (err) {
+    console.error('更新设备坐标失败', err);
+    uni.showToast({ title: '保存失败，请重试', icon: 'none' });
+  }
+};
+
+/** 退出移动模式 */
+const exitMoveMode = () => {
   isMovingDevice.value = false;
   showDevicePanel.value = false;
-
-  // 2. 其他确定逻辑（例如：更新保存设备的新位置）
-  console.log('已确定移动');
-}
+  movingDeviceIdProp.value = '';
+  movingDeviceOriginal.value = null;
+};
 
 // 面板相关的预留操作方法
 // 抽取公共方法：选中一个设备并飞过去
@@ -375,7 +433,26 @@ const handleDetails = () => {
 
 const handleMove = () => {
   console.log('点击了移动', currentDeviceInfo.value);
+  const info = currentDeviceInfo.value;
+
+  // 保存原始设备信息，供取消时飞回
+  movingDeviceOriginal.value = {
+    id: info.id,
+    lat: parseFloat(info.lat),
+    lng: parseFloat(info.lng),
+    name: info.name
+  };
+
+  // 进入移动模式
   isMovingDevice.value = true;
+
+  // 通知 RenderJS 隐藏该设备的 marker 和连线
+  movingDeviceIdProp.value = info.id;
+
+  // 飞到设备位置（十字准星对准）
+  mapConfig.center = [parseFloat(info.lat), parseFloat(info.lng)];
+  mapConfig.actionType = 'flyTo';
+  mapConfig.actionId++;
 };
 
 interface MapConfig {
@@ -492,6 +569,8 @@ const handleMapMessage = (data: any) => {
     };
     showDevicePanel.value = true;
   } else if (data.type === 'click') {
+    // 移动模式下忽略地图空白点击
+    if (isMovingDevice.value) return;
     console.log(`点击坐标: ${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}`);
     // 点击地图时，关闭设备列表面板
     showDevicePanel.value = false;
@@ -501,6 +580,9 @@ const handleMapMessage = (data: any) => {
     // DEBUG START
     onMapClickDebug({ lat: data.lat, lng: data.lng })
     // DEBUG END
+  } else if (data.type === 'confirmMoveResult') {
+    // 新增：处理移动确认结果
+    onConfirmMoveResult({ lat: data.lat, lng: data.lng });
   }
   // DEBUG START
   if (data.type === 'debugDrag') {
@@ -648,7 +730,10 @@ export default {
       tdtKey: 'a30fe8f02deafbdc08192aa8f81c0044',
       pendingConfig: null,
       showNames: true,
-      debugMarker: null // DEBUG
+      debugMarker: null, // DEBUG
+      deviceMarkers: {}, // deviceId -> L.marker
+      devicePolylines: {}, // deviceId -> [L.polyline, ...]
+      hiddenDeviceId: null // 当前被隐藏的设备ID
     }
   },
   mounted() {
@@ -823,6 +908,10 @@ export default {
         this.map.removeLayer(this.deviceLayerGroup);
         this.deviceLayerGroup = null;
       }
+      // 重置 marker/polyline 映射
+      this.deviceMarkers = {};
+      this.devicePolylines = {};
+
       if (!devices || devices.length === 0) return;
     
       this.deviceLayerGroup = L.layerGroup().addTo(this.map);
@@ -891,6 +980,9 @@ export default {
         // 将 marker 存为变量，并绑定点击事件
         var marker = L.marker(latlng, { icon: icon }).addTo(this.deviceLayerGroup);
 
+        // 存储 marker 引用
+        this.deviceMarkers[device.id] = marker;
+
         // 用 IIFE 捕获当前循环变量的值，避免闭包引用最后一次迭代
         ;(function(capturedId, capturedName, capturedLat, capturedLng, capturedType) {
           // 绑定点击事件，通过已有的 receiveRenderData 统一发送给逻辑层
@@ -935,11 +1027,71 @@ export default {
           var prevDevice = deviceMap[currentDevice.prev_id];
           
           // 绘制连线
-          L.polyline([prevDevice.latlng, currentDevice.latlng], {
+          var polyline = L.polyline([prevDevice.latlng, currentDevice.latlng], {
             color: '#03da6b',
             weight: 2,
             opacity: 1
           }).addTo(this.deviceLayerGroup);
+
+          // 存储 polyline 引用，双向关联两端设备
+          if (!this.devicePolylines[currentDevice.id]) this.devicePolylines[currentDevice.id] = [];
+          this.devicePolylines[currentDevice.id].push(polyline);
+          if (!this.devicePolylines[prevDevice.id]) this.devicePolylines[prevDevice.id] = [];
+          this.devicePolylines[prevDevice.id].push(polyline);
+        }
+      }
+    },
+
+    onConfirmMoveChange(newValue) {
+      console.log("onConfirmMoveChange", newValue);
+      if (!newValue || !this.map) return;
+
+      var center = this.map.getCenter();
+      this.$ownerInstance.callMethod('receiveRenderData', {
+        type: 'confirmMoveResult',
+        lat: center.lat,
+        lng: center.lng
+      });
+    },
+
+    /** 监听移动设备ID变化，隐藏/显示对应marker和连线 */
+    onMovingDeviceIdChange(newValue) {
+      if (!this.map) return;
+
+      // 恢复之前隐藏的设备
+      if (this.hiddenDeviceId && this.hiddenDeviceId !== newValue) {
+        this.setDeviceVisible(this.hiddenDeviceId, true);
+      }
+
+      if (newValue) {
+        this.setDeviceVisible(newValue, false);
+        this.hiddenDeviceId = newValue;
+      } else {
+        this.hiddenDeviceId = null;
+      }
+    },
+
+    /** 设置指定设备的 marker 和关联连线的可见性 */
+    setDeviceVisible(deviceId, visible) {
+      var marker = this.deviceMarkers[deviceId];
+      if (marker) {
+        var el = marker.getElement();
+        if (el) {
+          el.style.display = visible ? '' : 'none';
+        } else if (!visible) {
+          // marker 可能尚未渲染（flyTo 动画中），延迟重试
+          var self = this;
+          setTimeout(function() {
+            var el2 = marker.getElement();
+            if (el2) el2.style.display = 'none';
+          }, 600);
+        }
+      }
+
+      var polylines = this.devicePolylines[deviceId];
+      if (polylines) {
+        for (var i = 0; i < polylines.length; i++) {
+          polylines[i].setStyle({ opacity: visible ? 1 : 0 });
         }
       }
     },
@@ -1411,5 +1563,56 @@ export default {
   background-color: #2A85FF;
   color: #ffffff;
   box-shadow: 0 2px 10px rgba(42, 133, 255, 0.3);
+}
+
+/* 移动设备时的十字准星 */
+.move-crosshair {
+  position: absolute;
+  top: calc(var(--status-bar-height, 44px) + 44px);
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 998;
+  pointer-events: none;
+}
+
+.crosshair-icon {
+  position: relative;
+  width: 40px;
+  height: 40px;
+}
+
+.crosshair-h {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: rgba(51, 51, 51, 0.8);
+  transform: translateY(-50%);
+}
+
+.crosshair-v {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  height: 100%;
+  width: 2px;
+  background-color: rgba(51, 51, 51, 0.8);
+  transform: translateX(-50%);
+}
+
+.crosshair-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  background-color: #ff4444;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
 }
 </style>

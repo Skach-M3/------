@@ -48,20 +48,43 @@
           </view>
 
           <!-- select 单选下拉 -->
-          <picker v-else-if="field.type === 'select'" :disabled="field.editable === false"
-            :range="getLabelsArray(field.options)" :value="getPickerIndex(field.options, modelValue[field.key])"
-            @change="onPickerChange(field.key, field.options, $event)">
-            <view class="picker-box" :class="{ 'picker-disabled': field.editable === false }">
+          <block v-else-if="field.type === 'select'">
+            <!-- 超过10个选项，使用自定义搜索弹窗 -->
+            <view v-if="field.options && field.options.length > 10" class="picker-box"
+              :class="{ 'picker-disabled': field.editable === false }"
+              @click="field.editable !== false && openSearchSelect(field, field.options)">
               <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
                 {{ getDisplayLabel(field.options, modelValue[field.key]) || ('请选择' + field.label) }}
               </text>
               <text v-if="field.editable !== false" class="picker-arrow">›</text>
             </view>
-          </picker>
+            <!-- 10个及以内，使用原生 picker -->
+            <picker v-else :disabled="field.editable === false" :range="getLabelsArray(field.options)"
+              :value="getPickerIndex(field.options, modelValue[field.key])"
+              @change="onPickerChange(field.key, field.options, $event)">
+              <view class="picker-box" :class="{ 'picker-disabled': field.editable === false }">
+                <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
+                  {{ getDisplayLabel(field.options, modelValue[field.key]) || ('请选择' + field.label) }}
+                </text>
+                <text v-if="field.editable !== false" class="picker-arrow">›</text>
+              </view>
+            </picker>
+          </block>
 
           <!-- cascading-select 级联下拉 -->
           <block v-else-if="field.type === 'cascading-select'">
-            <picker v-if="getCascadingOptions(field).length > 0" :range="getLabelsArray(getCascadingOptions(field))"
+            <!-- 超过10个选项，使用自定义搜索弹窗 -->
+            <block v-if="getCascadingOptions(field).length > 10">
+              <view class="picker-box" @click="openSearchSelect(field, getCascadingOptions(field))">
+                <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
+                  {{ getDisplayLabel(getCascadingOptions(field), modelValue[field.key]) || ('请选择' + field.label) }}
+                </text>
+                <text class="picker-arrow">›</text>
+              </view>
+            </block>
+            <!-- 10个及以内，使用原生 picker -->
+            <picker v-else-if="getCascadingOptions(field).length > 0"
+              :range="getLabelsArray(getCascadingOptions(field))"
               :value="getPickerIndex(getCascadingOptions(field), modelValue[field.key])"
               @change="onPickerChange(field.key, getCascadingOptions(field), $event)">
               <view class="picker-box">
@@ -178,6 +201,31 @@
         </view>
       </view>
     </view>
+    <!-- ===== 搜索选择弹窗 (选项>10时触发) ===== -->
+    <view v-if="searchSelectModal.visible" class="search-modal-mask" @click="closeSearchSelect">
+      <view class="search-modal-panel" @click.stop>
+        <view class="search-modal-header">
+          <text class="search-modal-title">请选择{{ searchSelectModal.label }}</text>
+          <text class="search-modal-close" @click="closeSearchSelect">×</text>
+        </view>
+        <view class="search-modal-search">
+          <input v-model="searchSelectModal.keyword" class="search-modal-input" placeholder="输入关键字搜索..."
+            :adjust-position="false" cursor-spacing="20" />
+        </view>
+        <scroll-view scroll-y class="search-modal-list">
+          <view v-for="(opt, idx) in filteredSearchOptions" :key="idx" class="search-modal-item"
+            :class="{ 'search-modal-item-active': modelValue[searchSelectModal.fieldKey] === getOptValue(opt) }"
+            @click="onSearchSelectConfirm(opt)">
+            <text class="search-modal-item-text">{{ getOptLabel(opt) }}</text>
+            <text v-if="modelValue[searchSelectModal.fieldKey] === getOptValue(opt)"
+              class="search-modal-item-check">✓</text>
+          </view>
+          <view v-if="filteredSearchOptions.length === 0" class="search-modal-empty">
+            <text>无匹配选项</text>
+          </view>
+        </scroll-view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -214,6 +262,13 @@ export default {
   // ===== data 新增 =====
   data() {
     return {
+      searchSelectModal: {
+        visible: false,
+        fieldKey: '',
+        label: '',
+        options: [],
+        keyword: ''
+      },
       // 用户自定义新增的照片槽位
       extraPhotoSlots: [],
 
@@ -234,6 +289,16 @@ export default {
   },
 
   computed: {
+    // 模糊搜索过滤后的选项
+    filteredSearchOptions() {
+      const { options, keyword } = this.searchSelectModal;
+      if (!keyword) return options;
+      const lowerKeyword = keyword.toLowerCase();
+      return options.filter(opt => {
+        const label = this.getOptLabel(opt).toLowerCase();
+        return label.includes(lowerKeyword);
+      });
+    },
     compositePrefix() {
       return this.lineName ? `${this.lineName}#` : ''
     },
@@ -263,6 +328,26 @@ export default {
   },
 
   methods: {
+    /* ========== 搜索下拉弹窗逻辑 ========== */
+    openSearchSelect(field, options) {
+      this.searchSelectModal = {
+        visible: true,
+        fieldKey: field.key,
+        label: field.label,
+        options: options || [],
+        keyword: ''
+      };
+    },
+
+    closeSearchSelect() {
+      this.searchSelectModal.visible = false;
+    },
+
+    onSearchSelectConfirm(opt) {
+      const value = this.getOptValue(opt);
+      this.onInput(this.searchSelectModal.fieldKey, value);
+      this.closeSearchSelect();
+    },
     /* ========== 选项处理（核心修复） ========== */
 
     /**
@@ -987,5 +1072,103 @@ export default {
   font-size: 24rpx;
   color: #999;
   margin-left: 8rpx;
+}
+
+/* ===== 搜索选择弹窗 ===== */
+.search-modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1001;
+  display: flex;
+  align-items: flex-end;
+}
+
+.search-modal-panel {
+  width: 100%;
+  height: 70vh;
+  background-color: #ffffff;
+  border-radius: 24rpx 24rpx 0 0;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.2s ease-out;
+}
+
+.search-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30rpx 32rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.search-modal-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.search-modal-close {
+  font-size: 40rpx;
+  color: #999;
+  padding: 0 10rpx;
+}
+
+.search-modal-search {
+  padding: 20rpx 32rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.search-modal-input {
+  width: 100%;
+  height: 72rpx;
+  background-color: #f5f7fa;
+  border-radius: 36rpx;
+  padding: 0 32rpx;
+  font-size: 28rpx;
+  box-sizing: border-box;
+}
+
+.search-modal-list {
+  flex: 1;
+  height: 0;
+}
+
+.search-modal-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 32rpx;
+  border-bottom: 1rpx solid #f5f5f5;
+}
+
+.search-modal-item:active {
+  background-color: #f9f9f9;
+}
+
+.search-modal-item-text {
+  font-size: 28rpx;
+  color: #333;
+}
+
+.search-modal-item-active .search-modal-item-text {
+  color: #2979ff;
+  font-weight: 500;
+}
+
+.search-modal-item-check {
+  color: #2979ff;
+  font-size: 32rpx;
+  font-weight: bold;
+}
+
+.search-modal-empty {
+  padding: 60rpx 0;
+  text-align: center;
+  font-size: 28rpx;
+  color: #999;
 }
 </style>

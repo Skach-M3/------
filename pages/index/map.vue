@@ -261,7 +261,48 @@ const nextDevice = () => {
 };
 
 const handleNavigate = () => {
-  console.log('点击了导航', currentDeviceInfo.value);
+  const info = currentDeviceInfo.value;
+  const lat = info.lat;
+  const lng = info.lng;
+  const name = encodeURIComponent(info.name || '目标位置');
+
+  if (!lat || !lng || (lat === '0.000000' && lng === '0.000000')) {
+    uni.showToast({ title: '设备坐标无效', icon: 'none' });
+    return;
+  }
+
+  // #ifdef APP-PLUS
+  const platform = uni.getSystemInfoSync().platform;
+  let url = '';
+
+  if (platform === 'android') {
+    // t=2 表示步行导航，dev=1 表示传入 WGS84 坐标
+    url = `androidamap://route/plan/?sourceApplication=lineCollect&dlat=${lat}&dlon=${lng}&dname=${name}&dev=1&t=2`;
+  } else {
+    url = `iosamap://path?sourceApplication=lineCollect&dlat=${lat}&dlon=${lng}&dname=${name}&dev=1&t=2`;
+  }
+
+  plus.runtime.openURL(url, function (err) {
+    uni.showModal({
+      title: '提示',
+      content: '未检测到高德地图，是否前往下载？',
+      success: (res) => {
+        if (res.confirm) {
+          if (platform === 'android') {
+            plus.runtime.openURL('https://mobile.amap.com/');
+          } else {
+            plus.runtime.openURL('https://apps.apple.com/cn/app/id461703208');
+          }
+        }
+      }
+    });
+  });
+  // #endif
+
+  // #ifdef H5
+  const webUrl = `https://uri.amap.com/navigation?to=${lng},${lat},${name}&mode=walk&coordinate=wgs84`;
+  window.open(webUrl);
+  // #endif
 };
 
 const handleDetails = () => {

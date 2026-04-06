@@ -17,12 +17,19 @@
       :change:movingDeviceIdProp="mapModule.onMovingDeviceIdChange" :confirmMoveProp="confirmMoveProp"
       :change:confirmMoveProp="mapModule.onConfirmMoveChange"></view>
 
-    <!-- 移动设备时的十字准星 -->
-    <view class="move-crosshair" v-if="isMovingDevice">
-      <view class="crosshair-icon">
-        <view class="crosshair-h"></view>
-        <view class="crosshair-v"></view>
-        <view class="crosshair-dot"></view>
+    <!-- 移动模式 - 中心设备标记 -->
+    <view v-if="isMovingDevice" class="move-center-pin">
+      <!-- 落点脉冲环 -->
+      <view class="move-pin-pulse"></view>
+      <!-- 落点圆点 -->
+      <view class="move-pin-dot"></view>
+      <!-- 标记主体：水滴 + 名称 -->
+      <view class="move-pin-body">
+        <view class="move-pin-head">
+          <view class="move-pin-teardrop"></view>
+          <image v-if="movingDeviceIconUri" :src="movingDeviceIconUri" class="move-pin-icon" mode="aspectFit" />
+        </view>
+        <text class="move-pin-name">{{ movingDeviceOriginal?.name || '' }}</text>
       </view>
     </view>
 
@@ -175,10 +182,11 @@
 
 <!-- 1. 逻辑层 -->
 <script setup lang="ts">
-import { ref, reactive, onUnmounted } from 'vue';
+import { ref, reactive, computed, onUnmounted } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import deviceDAO from '@/dao/deviceDAO.js';
 import { getLocation } from '@/utils/get-location.js'
+import { getPinSvgUri } from '@/static/device_svgs.js';
 // DEBUG START
 import { DEBUG_ENABLED, debugLocation, setDebugLocation, clearDebugLocation } from '@/utils/debug-location.js'
 const debugPanelOpen = ref(false)
@@ -236,7 +244,13 @@ const isMovingDevice = ref(false)
 
 const confirmMoveProp = ref(0);
 
-const movingDeviceOriginal = ref<{ id: string; lat: number; lng: number; name: string } | null>(null);
+const movingDeviceOriginal = ref<{
+  id: string;
+  lat: number;
+  lng: number;
+  name: string;
+  deviceType: string;
+} | null>(null);
 const movingDeviceIdProp = ref('');
 // 取消按钮点击事件
 const cancelMove = () => {
@@ -440,7 +454,8 @@ const handleMove = () => {
     id: info.id,
     lat: parseFloat(info.lat),
     lng: parseFloat(info.lng),
-    name: info.name
+    name: info.name,
+    deviceType: info.deviceType
   };
 
   // 进入移动模式
@@ -454,6 +469,12 @@ const handleMove = () => {
   mapConfig.actionType = 'flyTo';
   mapConfig.actionId++;
 };
+
+/** 根据设备类型生成 SVG data URI，用于移动模式中心标记 */
+const movingDeviceIconUri = computed(() => {
+  if (!movingDeviceOriginal.value) return '';
+  return getPinSvgUri(movingDeviceOriginal.value.deviceType);
+});
 
 interface MapConfig {
   center: [number, number];
@@ -719,6 +740,7 @@ export default {
 
 <!-- 3. 视图层 (RenderJS) -->
 <script module="mapModule" lang="renderjs">
+import { getMapSvg } from '@/static/device_svgs.js';
 export default {
   data() {
     return {
@@ -1101,56 +1123,7 @@ export default {
     * 可自行替换各类型的 path 数据
     */
     getDeviceSvg(deviceType) {
-      var svgs = {
-        'pole':
-          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 162 148" width="16" height="16">'
-            + '<path fill="#fff" d="'
-          + 'M150,90.9C144.1,114.3,130.1,130.5,108.5,139.7C97.5,144.3,85.9,145.9,73.7,144.3'
-          + 'C61.5,142.7,50.6,138.6,41,131.4C25.1,119.7,15.7,104.1,12.9,84.3'
-          + 'C10.1,65.1,14.9,47.7,26.4,32.7C37.8,17.7,53.3,8.4,72.7,5.8'
-          + 'C91.4,3.4,108.1,7.7,123.1,18.6C138.9,30.2,148.4,45.7,151.2,65.5'
-          + 'C152.4,74,151.8,82.2,150,90.9'
-          + 'M104.5,55.1C99.4,61,94.2,67,88.7,73.4C100.6,86.3,112.4,99.1,124.3,112'
-          + 'C145.6,88.7,141,51.4,121.9,36.4C116.2,42.4,110.6,48.5,104.5,55.1'
-          + 'M32.1,48.7C21.4,70.8,24.2,94.5,39.9,111.8C51.4,99.1,63,86.4,75,73.2'
-          + 'C63.9,60.8,52.9,48.5,41.3,35.5C38.1,40,35.3,44,32.1,48.7'
-          + 'M52.1,113.7C50.7,115.5,49.4,117.3,48,119C63.1,134.4,97.9,136.3,116.2,119.2'
-          + 'C110.7,112.8,105.2,106.4,99.6,100.1C93.9,93.8,88,87.5,81.8,80.8'
-          + 'C72,91.6,62.3,102.3,52.1,113.7'
-          + 'M89,57.5C97.3,48,105.6,38.5,113.9,28.9C95.9,14.7,64.7,15.9,50.1,29.3'
-          + 'C60.6,41.3,71.1,53.3,81.9,65.8C84.5,62.7,86.5,60.4,89,57.5z" />'
-            + '</svg>',
-        'transformer':
-          '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
-          + '<circle cx="9" cy="12" r="5" stroke="#fff" stroke-width="1.5" />'
-          + '<circle cx="15" cy="12" r="5" stroke="#fff" stroke-width="1.5" />'
-          + '</svg>',
-        'substation':
-          '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
-          + '<rect x="4" y="9" width="16" height="11" rx="1" stroke="#fff" stroke-width="1.5" />'
-          + '<path d="M4 9l8-5 8 5" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />'
-          + '<path d="M13 12l-2 3.5h3l-2 3.5" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />'
-          + '</svg>',
-        'cable':
-          '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
-          + '<circle cx="12" cy="12" r="3" fill="#fff" />'
-          + '<path d="M4 12h5M15 12h5M12 4v5M12 15v5" stroke="#fff" stroke-width="1.5" stroke-linecap="round" />'
-          + '</svg>',
-        'meter':
-          '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
-          + '<circle cx="12" cy="13" r="8" stroke="#fff" stroke-width="1.5" />'
-          + '<path d="M12 13l4-4" stroke="#fff" stroke-width="2" stroke-linecap="round" />'
-          + '<circle cx="12" cy="13" r="1.5" fill="#fff" />'
-          + '</svg>',
-        'station':
-          '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
-          + '<path d="M3 12l9-7 9 7" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />'
-          + '<rect x="5" y="12" width="14" height="8" stroke="#fff" stroke-width="1.5" />'
-          + '<rect x="9" y="15" width="6" height="5" stroke="#fff" stroke-width="1.5" />'
-          + '</svg>'
-      };
-      return svgs[deviceType]
-        || '<svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="6" fill="#fff" /></svg>';
+      return getMapSvg(deviceType);
     },
 
     updateLayers(type) {
@@ -1565,54 +1538,112 @@ export default {
   box-shadow: 0 2px 10px rgba(42, 133, 255, 0.3);
 }
 
-/* 移动设备时的十字准星 */
-.move-crosshair {
-  position: absolute;
-  top: calc(var(--status-bar-height, 44px) + 44px);
-  bottom: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 998;
+/* ========== 移动模式 - 中心设备标记 ========== */
+
+/* 锚点：屏幕正中心 */
+.move-center-pin {
+  position: fixed;
+  left: 50%;
+  top: calc(50% + (44px + var(--status-bar-height, 44px)) / 2);
+  z-index: 9999;
   pointer-events: none;
 }
 
-.crosshair-icon {
-  position: relative;
-  width: 40px;
-  height: 40px;
+/* 脉冲环 - 提示落点位置 */
+.move-pin-pulse {
+  position: absolute;
+  left: -12px;
+  top: -10px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(59, 191, 251, 0.8);
+  animation: move-pulse 1.5s ease-out infinite;
 }
 
-.crosshair-h {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 100%;
-  height: 2px;
-  background-color: rgba(51, 51, 51, 0.8);
-  transform: translateY(-50%);
+@keyframes move-pulse {
+  0% {
+    transform: scale(0.5);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(3);
+    opacity: 0;
+  }
 }
 
-.crosshair-v {
+/* 中心小圆点 */
+.move-pin-dot {
   position: absolute;
-  left: 50%;
-  top: 0;
-  height: 100%;
-  width: 2px;
-  background-color: rgba(51, 51, 51, 0.8);
-  transform: translateX(-50%);
-}
-
-.crosshair-dot {
-  position: absolute;
-  top: 50%;
-  left: 50%;
+  left: -4px;
+  top: -4px;
   width: 8px;
   height: 8px;
-  background-color: #ff4444;
   border-radius: 50%;
-  transform: translate(-50%, -50%);
+  background: #3bbffb;
+  box-shadow: 0 0 4px rgba(59, 191, 251, 0.6);
+}
+
+/* 标记主体（水滴 + 名称横排） */
+.move-pin-body {
+  position: absolute;
+  /*
+   * 水滴28×28旋转后，尖端在容器下方约34px处
+   * 向上偏移34px使尖端对准屏幕中心
+   * 向左偏移14px使水滴水平居中
+   */
+  left: -14px;
+  top: -34px;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+/* 水滴容器 */
+.move-pin-head {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* 倒水滴背景 */
+.move-pin-teardrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #3bbffb;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  box-shadow: -2px 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+/* 设备类型图标 */
+.move-pin-icon {
+  position: relative;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+}
+
+/* 设备名称 */
+.move-pin-name {
+  margin-left: 6px;
+  margin-top: 4px;
+  white-space: nowrap;
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+  text-shadow:
+    -1px -1px 0 #333,
+    1px -1px 0 #333,
+    -1px 1px 0 #333,
+    1px 1px 0 #333;
 }
 </style>

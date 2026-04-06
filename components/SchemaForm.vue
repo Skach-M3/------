@@ -108,7 +108,7 @@
         <!-- 遍历所有槽位 -->
         <!-- 遍历所有槽位 -->
         <view v-for="slot in allPhotoSlots" :key="slot.key" class="photo-grid-item">
-          <view class="photo-slot" @click="onSlotTap(slot)">
+          <view :class="['photo-slot', photos[slot.key] ? 'photo-slot-taken' : '']" @click="onSlotTap(slot)">
             <!-- 已拍照：缩略图 -->
             <template v-if="photos[slot.key]">
               <image :src="photos[slot.key]" mode="aspectFill" class="photo-thumb" />
@@ -127,6 +127,53 @@
         <view v-if="allowExtraSlot" class="photo-grid-item">
           <view class="photo-slot add-slot" @click="onAddSlotTap">
             <text class="add-icon">+</text>
+          </view>
+        </view>
+      </view>
+    </view>
+    <!-- ===== ActionSheet 已拍照片操作面板 ===== -->
+    <view v-if="actionSheet.visible" class="action-sheet-mask" @click="closeActionSheet">
+      <view class="action-sheet-panel" @click.stop>
+        <!-- 选项组 -->
+        <view class="action-sheet-group">
+          <view class="action-sheet-item" @click="onPreviewPhoto">
+            <text class="action-sheet-text">查看照片</text>
+          </view>
+          <view class="action-sheet-divider"></view>
+          <view class="action-sheet-item" @click="onRetakePhoto">
+            <text class="action-sheet-text">重新拍照</text>
+          </view>
+          <view class="action-sheet-divider"></view>
+          <view class="action-sheet-item" @click="onDeletePhoto">
+            <text class="action-sheet-text action-sheet-text-danger">删除照片</text>
+          </view>
+        </view>
+        <!-- 取消按钮 -->
+        <view class="action-sheet-cancel" @click="closeActionSheet">
+          <text class="action-sheet-text action-sheet-text-bold">取消</text>
+        </view>
+      </view>
+    </view>
+    <!-- ===== 新增槽位弹窗 ===== -->
+    <view v-if="addSlotModal.visible" class="modal-mask" @click="onCancelAddSlot">
+      <view class="modal-panel" @click.stop>
+        <!-- 标题 -->
+        <view class="modal-header">
+          <text class="modal-title">新增照片</text>
+        </view>
+        <!-- 输入框 -->
+        <view class="modal-body">
+          <input v-model="addSlotModal.label" class="modal-input" placeholder="请输入照片名称"
+            placeholder-class="modal-input-placeholder" maxlength="20" focus />
+        </view>
+        <!-- 按钮 -->
+        <view class="modal-footer">
+          <view class="modal-btn modal-btn-cancel" @click="onCancelAddSlot">
+            <text class="modal-btn-text">取消</text>
+          </view>
+          <view class="modal-footer-divider"></view>
+          <view class="modal-btn modal-btn-confirm" @click="onConfirmAddSlot">
+            <text class="modal-btn-text modal-btn-text-primary">确认</text>
           </view>
         </view>
       </view>
@@ -598,6 +645,7 @@ export default {
   margin-top: 24rpx;
 }
 
+/* 网格容器 */
 .photo-grid {
   display: flex;
   flex-wrap: wrap;
@@ -605,6 +653,7 @@ export default {
   gap: 16rpx;
 }
 
+/* 网格项 - 三等分去除间距 */
 .photo-grid-item {
   width: calc((100% - 32rpx) / 3);
   display: flex;
@@ -612,6 +661,7 @@ export default {
   align-items: center;
 }
 
+/* 方形占位槽 */
 .photo-slot {
   width: 100%;
   padding-bottom: 100%;
@@ -620,6 +670,7 @@ export default {
   overflow: hidden;
   background-color: #f5f5f5;
   border: 2rpx dashed #cccccc;
+  box-sizing: border-box;
 }
 
 /* 已拍照状态 - 去掉虚线边框 */
@@ -697,6 +748,185 @@ export default {
   font-size: 64rpx;
   color: #999999;
   line-height: 1;
+}
+
+/* ===== ActionSheet ===== */
+.action-sheet-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.action-sheet-panel {
+  width: 100%;
+  padding: 0 16rpx 32rpx;
+  animation: slideUp 0.2s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+.action-sheet-group {
+  background-color: #ffffff;
+  border-radius: 24rpx;
+  overflow: hidden;
+}
+
+.action-sheet-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100rpx;
+}
+
+.action-sheet-item:active {
+  background-color: #f2f2f2;
+}
+
+.action-sheet-divider {
+  height: 1rpx;
+  background-color: #e5e5e5;
+  margin: 0 24rpx;
+}
+
+.action-sheet-text {
+  font-size: 30rpx;
+  color: #333333;
+}
+
+.action-sheet-text-danger {
+  color: #e54d42;
+}
+
+.action-sheet-text-bold {
+  font-weight: 600;
+}
+
+.action-sheet-cancel {
+  margin-top: 16rpx;
+  background-color: #ffffff;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100rpx;
+}
+
+.action-sheet-cancel:active {
+  background-color: #f2f2f2;
+}
+
+/* ===== Modal 弹窗 ===== */
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-panel {
+  width: 560rpx;
+  background-color: #ffffff;
+  border-radius: 24rpx;
+  overflow: hidden;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.modal-header {
+  padding: 40rpx 32rpx 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333333;
+}
+
+.modal-body {
+  padding: 24rpx 32rpx 40rpx;
+}
+
+.modal-input {
+  width: 100%;
+  height: 80rpx;
+  border: 2rpx solid #dcdcdc;
+  border-radius: 12rpx;
+  padding: 1 24rpx;
+  font-size: 28rpx;
+  color: #333333;
+  background-color: #f9f9f9;
+}
+
+.modal-input-placeholder {
+  color: #bbbbbb;
+  font-size: 28rpx;
+}
+
+.modal-footer {
+  display: flex;
+  border-top: 1rpx solid #e5e5e5;
+}
+
+.modal-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 96rpx;
+}
+
+.modal-btn:active {
+  background-color: #f2f2f2;
+}
+
+.modal-footer-divider {
+  width: 1rpx;
+  background-color: #e5e5e5;
+}
+
+.modal-btn-text {
+  font-size: 30rpx;
+  color: #666666;
+}
+
+.modal-btn-text-primary {
+  color: #2979ff;
+  font-weight: 600;
 }
 
 /* ---- 下拉选择器 ---- */

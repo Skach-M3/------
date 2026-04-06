@@ -332,9 +332,25 @@ export default {
           }
           break
 
-        case 'cable':
-          // 电缆拐点的命名规则
-          suffix = `C${this.sortOrder}`
+        case 'cable_turning_point':
+          // 杆塔的命名规则
+          if (this.parentName) {
+            // 如果上级节点名称包含"#"，提取第一个"#"后面的全部内容
+            const hashIndex = this.parentName.indexOf('#')
+            if (hashIndex !== -1) {
+              suffix = this.parentName.substring(hashIndex + 1)
+            } else {
+              suffix = this.parentName
+            }
+            const match = suffix.match(/(\d+)$/)
+            if (match) {
+              const numStr = match[1]
+              const nextNum = parseInt(numStr, 10) + 1
+              // 保持原有位数，如 "004" → "005"，"009" → "010"
+              const nextStr = String(nextNum).padStart(numStr.length, '0')
+              suffix = suffix.slice(0, -numStr.length) + nextStr
+            }
+          }
           break
 
         case 'transformer':

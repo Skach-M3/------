@@ -617,9 +617,9 @@ const handleMapMessage = (data: any) => {
 const isFabOpen = ref(false);
 
 const fabItems = [
-  { name: '变电站', deviceType: 'substation' },
+  // { name: '变电站', deviceType: 'substation' },
   { name: '杆塔', deviceType: 'pole' },
-  { name: '电缆拐点', deviceType: 'cable' },
+  { name: '电缆拐点', deviceType: 'cable_turning_point' },
   { name: '变压器', deviceType: 'transformer' },
   { name: '计量信息', deviceType: 'meter' },
   { name: '站房', deviceType: 'station' }

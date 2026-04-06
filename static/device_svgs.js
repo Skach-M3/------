@@ -40,7 +40,7 @@ export const MAP_SVGS = {
         + '<path d="M13 12l-2 3.5h3l-2 3.5" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />'
         + '</svg>',
 
-    cable:
+    cable_turning_point:
         '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
         + '<circle cx="12" cy="12" r="3" fill="#fff" />'
         + '<path d="M4 12h5M15 12h5M12 4v5M12 15v5" stroke="#fff" stroke-width="1.5" stroke-linecap="round" />'
@@ -70,7 +70,7 @@ export const PIN_SVGS = {
 
     pole: MAP_SVGS.pole, // 复用
 
-    cable:
+    cable_turning_point:
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
         + '<circle cx="8" cy="8" r="2" fill="white"/>'
         + '<path d="M2 8h4M10 8h4M8 2v4M8 10v4" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg>',

@@ -6,14 +6,23 @@
  */
 
 import poleSchema from './pole.js'
-import poleSwitchgear from './poleSwitchgear.js'
+import poleSwitchgearSchema from './poleSwitchgear.js'
+import cableTurningingPointSchema from './cableTurningPoint.js'
+import transformSchema from './transformer.js'
+import meterSchema from './meter.js'
+import stationSchema from './station.js'
+import stationSwitchgearSchema from './stationSwitchgear.js'
+
 // 后续新增设备类型时在此导入并注册：
-// import wireSchema from './wire.js'
-// import switchSchema from './switch.js'
 
 const schemas = {
     pole: poleSchema,
-    pole_switchgear: poleSwitchgear,
+    pole_switchgear: poleSwitchgearSchema,
+    cable_turning_point: cableTurningingPointSchema,
+    transformer: transformSchema,
+    meter: meterSchema,
+    station: stationSchema,
+    station_switchgear: stationSwitchgearSchema,
     // wire: wireSchema,
     // switch: switchSchema,
 }

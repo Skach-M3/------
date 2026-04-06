@@ -250,14 +250,75 @@ const confirmMove = () => {
 }
 
 // 面板相关的预留操作方法
+// 抽取公共方法：选中一个设备并飞过去
+const selectDevice = (device: any) => {
+  const lat = parseFloat(device.latitude);
+  const lng = parseFloat(device.longitude);
+
+  if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
+    uni.showToast({ title: '该设备坐标无效', icon: 'none' });
+    return;
+  }
+
+  // 计算距离
+  let refLat: number, refLng: number;
+  if (DEBUG_ENABLED && debugLocation.lat !== null && debugLocation.lng !== null) {
+    refLat = debugLocation.lat;
+    refLng = debugLocation.lng;
+  } else {
+    refLat = userLocation.value.lat;
+    refLng = userLocation.value.lng;
+  }
+
+  const dist = (refLat !== 0 || refLng !== 0)
+    ? calculateDistance(refLat, refLng, lat, lng)
+    : '未定位';
+
+  currentDeviceInfo.value = {
+    id: device.id || '',
+    name: device.name || '未知设备',
+    distance: dist,
+    lng: lng.toFixed(6),
+    lat: lat.toFixed(6),
+    deviceType: device.device_type || ''
+  };
+
+  // 飞到该设备位置
+  mapConfig.center = [lat, lng];
+  mapConfig.actionType = 'flyTo';
+  mapConfig.actionId++;
+};
+
 const prevDevice = () => {
-  console.log('点击了上一个设备');
-  // TODO: 实现切换上一个设备的逻辑
+  const devices = devicesProp.value;
+  if (!devices || devices.length === 0) return;
+
+  const currentIndex = devices.findIndex(
+    (d: any) => String(d.id) === String(currentDeviceInfo.value.id)
+  );
+
+  if (currentIndex <= 0) {
+    uni.showToast({ title: '已经是第一个设备了', icon: 'none' });
+    return;
+  }
+
+  selectDevice(devices[currentIndex - 1]);
 };
 
 const nextDevice = () => {
-  console.log('点击了下一个设备');
-  // TODO: 实现切换下一个设备的逻辑
+  const devices = devicesProp.value;
+  if (!devices || devices.length === 0) return;
+
+  const currentIndex = devices.findIndex(
+    (d: any) => String(d.id) === String(currentDeviceInfo.value.id)
+  );
+
+  if (currentIndex === -1 || currentIndex >= devices.length - 1) {
+    uni.showToast({ title: '已经是最后一个设备了', icon: 'none' });
+    return;
+  }
+
+  selectDevice(devices[currentIndex + 1]);
 };
 
 const handleNavigate = () => {
@@ -686,6 +747,10 @@ export default {
       }
       else if (config.actionType === 'layer') {
         this.updateLayers(config.layerType);
+      }else if (config.actionType === 'flyTo') {
+        // 如果当前缩放太小，自动放大到 16 级；否则保持当前缩放
+        var targetZoom = Math.max(this.map.getZoom(), 16);
+        this.map.flyTo(config.center, targetZoom, { duration: 0.8 });
       }
     },
 

@@ -3,7 +3,7 @@
 		<!-- 标题栏放在最顶上 -->
 		<view class="nav-bar">
 			<view class="logo-box">
-				<text class="logo-text">R</text>
+				<image class="logo-img" src="/static/logo.svg" mode="aspectFit"></image>
 			</view>
 			<text class="app-title">现场采集工具</text>
 		</view>
@@ -25,7 +25,7 @@
 				<view class="location-data">
 					<text class="data-line">纬度：{{ locationInfo.latitude }}</text>
 					<text class="data-line">经度：{{ locationInfo.longitude }}</text>
-					<text class="data-line">精度：±{{ locationInfo.accuracy }}</text>
+					<!-- <text class="data-line">精度：±{{ locationInfo.accuracy }}</text> -->
 					<text class="data-line address-text">{{ locationInfo.address }}</text>
 				</view>
 			</view>
@@ -47,12 +47,12 @@
 					</view>
 
 					<!-- 台区采集 (绿色) -->
-					<view class="action-item" @click="handleAction('substation')">
+					<!-- <view class="action-item" @click="handleAction('substation')">
 						<view class="icon-wrapper green-bg">
 							<u-icon name="grid" color="#fff" size="32"></u-icon>
 						</view>
 						<text class="action-name">台区采集</text>
-					</view>
+					</view> -->
 				</view>
 			</view>
 
@@ -138,6 +138,34 @@ const clearRetryTimer = () => {
 	}
 };
 
+// 天地图逆地理编码
+const reverseGeocode = (lat: number, lon: number) => {
+	const postStr = encodeURIComponent(JSON.stringify({
+		lon: lon,
+		lat: lat,
+		ver: 1
+	}));
+	const url = `https://api.tianditu.gov.cn/geocoder?postStr=${postStr}&type=geocode&tk=${TIANDITU_KEY}`;
+
+	uni.request({
+		url: url,
+		method: 'GET',
+		success: (res: any) => {
+			console.log('天地图逆地理编码结果:', res.data);
+			if (res.data && res.data.result) {
+				const result = res.data.result;
+				// formatted_address 是完整地址字符串
+				locationInfo.address = result.formatted_address || '未知详细地址';
+			} else {
+				locationInfo.address = '地址解析失败';
+			}
+		},
+		fail: (err) => {
+			console.warn('逆地理编码请求失败:', err);
+			locationInfo.address = '地址解析失败（网络错误）';
+		}
+	});
+};
 // 获取定位 (isSilent: 是否为静默重试，静默重试不弹窗打扰用户)
 const startLocation = (isSilent = false) => {
 	isLocating.value = true;
@@ -149,9 +177,8 @@ const startLocation = (isSilent = false) => {
 	}
 
 	uni.getLocation({
-		type: 'gcj02', // 国测局坐标系，天地图适用
+		type: 'wgs84',
 		isHighAccuracy: true,
-		geocode: true,
 		success: (res) => {
 			// 定位成功，清除定时器，结束重试状态
 			clearRetryTimer();
@@ -162,12 +189,9 @@ const startLocation = (isSilent = false) => {
 			locationInfo.accuracy = res.accuracy ? `${res.accuracy}米` : '未知';
 
 			// 开始解析详细地址
-			if (res.address) {
-				const addr = res.address;
-				locationInfo.address = `${addr.province || ''}${addr.city || ''}${addr.district || ''}${addr.street || ''}${addr.streetNum || ''}${addr.poiName || ''}` || '未知详细地址';
-			} else {
-				locationInfo.address = '地址解析成功 (具体地址需配置地图SDK)';
-			}
+			// ✅ 用天地图逆地理编码获取详细地址
+			locationInfo.address = '正在解析地址...';
+			reverseGeocode(res.latitude, res.longitude);
 			isLocating.value = false;
 		},
 		fail: (err) => {
@@ -265,18 +289,20 @@ onUnload(() => {
 	.logo-box {
 		width: 40px;
 		height: 40px;
+		/* 如果您的SVG本身是透明背景且不需要白色底，可以把下面这行注释掉 */
 		background-color: #ffffff;
 		border-radius: 10px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		margin-right: 12px;
+		overflow: hidden;
+		/* 确保图片不会超出圆角 */
 
-		.logo-text {
-			color: #006567;
-			font-size: 24px;
-			font-weight: bold;
-			font-style: italic;
+		.logo-img {
+			width: 100%;
+			height: 100%;
+			/* 根据需要可以调整缩放模式，如果是正方形logo通常不需要改 */
 		}
 	}
 

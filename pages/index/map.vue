@@ -183,7 +183,7 @@
 <!-- 1. 逻辑层 -->
 <script setup lang="ts">
 import { ref, reactive, computed, onUnmounted } from 'vue';
-import { onLoad, onShow } from '@dcloudio/uni-app';
+import { onLoad, onShow, onHide } from '@dcloudio/uni-app';
 import deviceDAO from '@/dao/deviceDAO.js';
 import { getLocation } from '@/utils/get-location.js'
 import { getPinSvgUri } from '@/static/device_svgs.js';
@@ -210,6 +210,35 @@ function onClearDebugLocation() {
 
 // 用户当前真实位置（独立于 mapConfig.center）
 const userLocation = ref({ lat: 0, lng: 0 });
+
+// ========== 持续定位 ==========
+const locationTimer = ref<number | null>(null);
+
+const startLocationWatch = () => {
+  stopLocationWatch(); // 防止重复
+  locationTimer.value = setInterval(() => {
+    getLocation({
+      type: 'wgs84',
+      success: (res) => {
+        userLocation.value = { lat: res.latitude, lng: res.longitude };
+        // 仅更新蓝点位置，不移动地图视野
+        mapConfig.center = [res.latitude, res.longitude];
+        mapConfig.actionType = 'updateLocation';
+        mapConfig.actionId++;
+      },
+      fail: () => {
+        // 静默失败，不打断用户操作
+      }
+    });
+  }, 3000); // 每3秒更新一次，可根据需要调整
+};
+
+const stopLocationWatch = () => {
+  if (locationTimer.value) {
+    clearInterval(locationTimer.value);
+    locationTimer.value = null;
+  }
+};
 
 // Haversine 公式计算两点距离，返回格式化字符串
 const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): string => {
@@ -709,10 +738,13 @@ onLoad((options) => {
       mapConfig.zoom = 16;
       mapConfig.actionType = 'initLocate';
       mapConfig.actionId++;
+      startLocationWatch();
     },
     fail: () => {
       uni.hideLoading();
       uni.showToast({ title: '获取定位失败', icon: 'none' });
+      // 即使首次失败也启动持续定位，后续可能恢复
+      startLocationWatch();
     }
   });
 });
@@ -720,10 +752,16 @@ onLoad((options) => {
 // ← 新增：每次页面显示时重新加载设备（包括从编辑页返回时）
 onShow(() => {
   loadDevices();
+  startLocationWatch();
+});
+
+onHide(() => {
+  stopLocationWatch();
 });
 
 onUnmounted(() => {
   uni.$off('map-message', handleMapMessage);
+  stopLocationWatch();
 });
 </script>
 
@@ -840,6 +878,10 @@ export default {
       }
       else if (config.actionType === 'locate') {
         this.map.flyTo(config.center, config.zoom);
+        this.drawLocationMarker(config.center);
+      }
+      else if (config.actionType === 'updateLocation') {
+        // 仅更新蓝点位置，不移动地图视野
         this.drawLocationMarker(config.center);
       }
       else if (config.actionType === 'zoom') {

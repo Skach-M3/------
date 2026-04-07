@@ -37,3 +37,6 @@ lerna-debug.log*
 /tests/e2e/reports/
 /tests/e2e/videos/
 /tests/e2e/screenshots/
+
+# 7. 打包相关
+/unpackage/

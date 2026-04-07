@@ -933,14 +933,6 @@ export default {
         radius: 8,
         weight: 2
       }).addTo(this.map);
-
-      L.circleMarker(center, {
-        color: '#2A85FF',
-        fillColor: '#2A85FF',
-        fillOpacity: 0.2,
-        radius: 15,
-        weight: 0
-      }).addTo(this.map);
     },
 
     onShowNamesChange(newValue) {

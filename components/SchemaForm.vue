@@ -1,124 +1,128 @@
 <template>
   <view class="schema-form">
-    <block v-for="(field, index) in schema.fields" :key="index">
-      <block v-if="field.type !== 'hidden' && isFieldVisible(field)">
+    <!-- 按 group 分块显示 -->
+    <view v-for="(group, groupIndex) in groupedFields" :key="groupIndex" class="form-group">
+      <!-- 分组标题 -->
+      <view v-if="group.name" class="section-header">
+        <text class="section-title">{{ group.name }}</text>
+      </view>
 
-        <!-- 分组标题 -->
-        <view v-if="field.type === 'section'" class="section-header">
-          <text class="section-title">{{ field.label }}</text>
-        </view>
+      <!-- 分组内的字段 -->
+      <block v-for="(field, index) in group.fields" :key="index">
+        <block v-if="field.type !== 'hidden' && isFieldVisible(field)">
 
-        <!-- 普通字段 -->
-        <view v-else class="form-item">
-          <view class="form-label-row">
-            <text class="form-label">{{ field.label }}</text>
-            <text v-if="field.required" class="required-star">*</text>
-          </view>
+          <!-- 普通字段 -->
+          <view class="form-item">
+            <view class="form-label-row">
+              <text class="form-label">{{ field.label }}</text>
+              <text v-if="field.required" class="required-star">*</text>
+            </view>
 
-          <!-- text -->
-          <input v-if="field.type === 'text'" class="form-input" :value="modelValue[field.key]"
-            :placeholder="field.placeholder || ('请输入' + field.label)"
-            @input="onInput(field.key, $event.detail.value)" />
-
-          <!-- composite-name 复合名称字段 -->
-          <view v-else-if="field.type === 'composite-name'" class="composite-name-wrapper">
-            <textarea class="composite-name-prefix" :value="compositePrefix" disabled auto-height />
-            <textarea class="composite-name-suffix" :value="compositeSuffix"
+            <!-- text -->
+            <input v-if="field.type === 'text'" class="form-input" :value="modelValue[field.key]"
               :placeholder="field.placeholder || ('请输入' + field.label)"
-              @input="onCompositeInput(field.key, $event.detail.value)" auto-height />
-          </view>
+              @input="onInput(field.key, $event.detail.value)" />
 
-          <!-- number -->
-          <input v-else-if="field.type === 'number'" class="form-input" type="digit" :value="modelValue[field.key]"
-            :placeholder="field.placeholder || ('请输入' + field.label)"
-            @input="onInput(field.key, $event.detail.value)" />
-
-          <!-- textarea -->
-          <textarea v-else-if="field.type === 'textarea'" class="form-textarea" :value="modelValue[field.key]"
-            :placeholder="field.placeholder || ('请输入' + field.label)" :maxlength="field.maxLength || 500"
-            @input="onInput(field.key, $event.detail.value)" />
-
-          <!-- radio 单选按钮组 -->
-          <view v-else-if="field.type === 'radio'" class="option-group">
-            <view v-for="(opt, optIdx) in field.options" :key="optIdx" class="option-btn"
-              :class="{ 'option-active': modelValue[field.key] === getOptValue(opt) }"
-              @click="onInput(field.key, getOptValue(opt))">
-              <text class="option-text">{{ getOptLabel(opt) }}</text>
+            <!-- composite-name 复合名称字段 -->
+            <view v-else-if="field.type === 'composite-name'" class="composite-name-wrapper">
+              <textarea class="composite-name-prefix" :value="compositePrefix" disabled auto-height />
+              <textarea class="composite-name-suffix" :value="compositeSuffix"
+                :placeholder="field.placeholder || ('请输入' + field.label)"
+                @input="onCompositeInput(field.key, $event.detail.value)" auto-height />
             </view>
-          </view>
 
-          <!-- select 单选下拉 -->
-          <block v-else-if="field.type === 'select'">
-            <!-- 超过10个选项，使用自定义搜索弹窗 -->
-            <view v-if="field.options && field.options.length > 10" class="picker-box"
-              :class="{ 'picker-disabled': field.editable === false }"
-              @click="field.editable !== false && openSearchSelect(field, field.options)">
-              <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
-                {{ getDisplayLabel(field.options, modelValue[field.key]) || ('请选择' + field.label) }}
-              </text>
-              <text v-if="field.editable !== false" class="picker-arrow">›</text>
+            <!-- number -->
+            <input v-else-if="field.type === 'number'" class="form-input" type="digit" :value="modelValue[field.key]"
+              :placeholder="field.placeholder || ('请输入' + field.label)"
+              @input="onInput(field.key, $event.detail.value)" />
+
+            <!-- textarea -->
+            <textarea v-else-if="field.type === 'textarea'" class="form-textarea" :value="modelValue[field.key]"
+              :placeholder="field.placeholder || ('请输入' + field.label)" :maxlength="field.maxLength || 500"
+              @input="onInput(field.key, $event.detail.value)" />
+
+            <!-- radio 单选按钮组 -->
+            <view v-else-if="field.type === 'radio'" class="option-group">
+              <view v-for="(opt, optIdx) in field.options" :key="optIdx" class="option-btn"
+                :class="{ 'option-active': modelValue[field.key] === getOptValue(opt) }"
+                @click="onInput(field.key, getOptValue(opt))">
+                <text class="option-text">{{ getOptLabel(opt) }}</text>
+              </view>
             </view>
-            <!-- 10个及以内，使用原生 picker -->
-            <picker v-else :disabled="field.editable === false" :range="getLabelsArray(field.options)"
-              :value="getPickerIndex(field.options, modelValue[field.key])"
-              @change="onPickerChange(field.key, field.options, $event)">
-              <view class="picker-box" :class="{ 'picker-disabled': field.editable === false }">
+
+            <!-- select 单选下拉 -->
+            <block v-else-if="field.type === 'select'">
+              <!-- 超过10个选项，使用自定义搜索弹窗 -->
+              <view v-if="field.options && field.options.length > 10" class="picker-box"
+                :class="{ 'picker-disabled': field.editable === false }"
+                @click="field.editable !== false && openSearchSelect(field, field.options)">
                 <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
                   {{ getDisplayLabel(field.options, modelValue[field.key]) || ('请选择' + field.label) }}
                 </text>
                 <text v-if="field.editable !== false" class="picker-arrow">›</text>
               </view>
-            </picker>
-          </block>
+              <!-- 10个及以内，使用原生 picker -->
+              <picker v-else :disabled="field.editable === false" :range="getLabelsArray(field.options)"
+                :value="getPickerIndex(field.options, modelValue[field.key])"
+                @change="onPickerChange(field.key, field.options, $event)">
+                <view class="picker-box" :class="{ 'picker-disabled': field.editable === false }">
+                  <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
+                    {{ getDisplayLabel(field.options, modelValue[field.key]) || ('请选择' + field.label) }}
+                  </text>
+                  <text v-if="field.editable !== false" class="picker-arrow">›</text>
+                </view>
+              </picker>
+            </block>
 
-          <!-- cascading-select 级联下拉 -->
-          <block v-else-if="field.type === 'cascading-select'">
-            <!-- 超过10个选项，使用自定义搜索弹窗 -->
-            <block v-if="getCascadingOptions(field).length > 10">
-              <view class="picker-box" @click="openSearchSelect(field, getCascadingOptions(field))">
-                <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
-                  {{ getDisplayLabel(getCascadingOptions(field), modelValue[field.key]) || ('请选择' + field.label) }}
+            <!-- cascading-select 级联下拉 -->
+            <block v-else-if="field.type === 'cascading-select'">
+              <!-- 超过10个选项，使用自定义搜索弹窗 -->
+              <block v-if="getCascadingOptions(field).length > 10">
+                <view class="picker-box" @click="openSearchSelect(field, getCascadingOptions(field))">
+                  <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
+                    {{ getDisplayLabel(getCascadingOptions(field), modelValue[field.key]) || ('请选择' + field.label) }}
+                  </text>
+                  <text class="picker-arrow">›</text>
+                </view>
+              </block>
+              <!-- 10个及以内，使用原生 picker -->
+              <picker v-else-if="getCascadingOptions(field).length > 0"
+                :range="getLabelsArray(getCascadingOptions(field))"
+                :value="getPickerIndex(getCascadingOptions(field), modelValue[field.key])"
+                @change="onPickerChange(field.key, getCascadingOptions(field), $event)">
+                <view class="picker-box">
+                  <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
+                    {{ getDisplayLabel(getCascadingOptions(field), modelValue[field.key]) || ('请选择' + field.label) }}
+                  </text>
+                  <text class="picker-arrow">›</text>
+                </view>
+              </picker>
+              <view v-else class="picker-box picker-disabled">
+                <text class="picker-placeholder">
+                  {{ modelValue[field.dependsOn] ? '暂无可选项' : ('请先选择' + getFieldLabel(field.dependsOn)) }}
                 </text>
-                <text class="picker-arrow">›</text>
               </view>
             </block>
-            <!-- 10个及以内，使用原生 picker -->
-            <picker v-else-if="getCascadingOptions(field).length > 0"
-              :range="getLabelsArray(getCascadingOptions(field))"
-              :value="getPickerIndex(getCascadingOptions(field), modelValue[field.key])"
-              @change="onPickerChange(field.key, getCascadingOptions(field), $event)">
-              <view class="picker-box">
-                <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
-                  {{ getDisplayLabel(getCascadingOptions(field), modelValue[field.key]) || ('请选择' + field.label) }}
-                </text>
-                <text class="picker-arrow">›</text>
+
+            <!-- multi-select / checkbox 多选按钮组 -->
+            <view v-else-if="field.type === 'multi-select' || field.type === 'checkbox'" class="option-group">
+              <view v-for="(opt, optIdx) in field.options" :key="optIdx" class="option-btn"
+                :class="{ 'option-active': isMultiSelected(field.key, getOptValue(opt)) }"
+                @click="onToggleMulti(field.key, getOptValue(opt))">
+                <text class="option-text">{{ getOptLabel(opt) }}</text>
               </view>
-            </picker>
-            <view v-else class="picker-box picker-disabled">
-              <text class="picker-placeholder">
-                {{ modelValue[field.dependsOn] ? '暂无可选项' : ('请先选择' + getFieldLabel(field.dependsOn)) }}
-              </text>
             </view>
-          </block>
 
-          <!-- multi-select / checkbox 多选按钮组 -->
-          <view v-else-if="field.type === 'multi-select' || field.type === 'checkbox'" class="option-group">
-            <view v-for="(opt, optIdx) in field.options" :key="optIdx" class="option-btn"
-              :class="{ 'option-active': isMultiSelected(field.key, getOptValue(opt)) }"
-              @click="onToggleMulti(field.key, getOptValue(opt))">
-              <text class="option-text">{{ getOptLabel(opt) }}</text>
+            <!-- auto-calc 只读计算字段 -->
+            <view v-else-if="field.type === 'auto-calc'" class="auto-calc-box">
+              <text class="auto-calc-value">{{ modelValue[field.key] || '—' }}</text>
+              <text v-if="field.unit && modelValue[field.key]" class="auto-calc-unit">{{ field.unit }}</text>
             </view>
-          </view>
 
-          <!-- auto-calc 只读计算字段 -->
-          <view v-else-if="field.type === 'auto-calc'" class="auto-calc-box">
-            <text class="auto-calc-value">{{ modelValue[field.key] || '—' }}</text>
-            <text v-if="field.unit && modelValue[field.key]" class="auto-calc-unit">{{ field.unit }}</text>
           </view>
-
-        </view>
+        </block>
       </block>
-    </block>
+    </view>
     <!-- ===== 照片区域 ===== -->
     <view v-if="showPhotoSection" class="photo-section">
       <!-- 区域标题 -->
@@ -289,6 +293,25 @@ export default {
   },
 
   computed: {
+    // 按 group 分组字段
+    groupedFields() {
+      const fields = this.schema?.fields || []
+      const groups = []
+      const groupMap = new Map()
+
+      fields.forEach(field => {
+        const groupName = field.group || ''
+        if (!groupMap.has(groupName)) {
+          const group = { name: groupName, fields: [] }
+          groupMap.set(groupName, group)
+          groups.push(group)
+        }
+        groupMap.get(groupName).fields.push(field)
+      })
+
+      return groups
+    },
+
     // 模糊搜索过滤后的选项
     filteredSearchOptions() {
       const { options, keyword } = this.searchSelectModal;
@@ -302,8 +325,14 @@ export default {
     compositePrefix() {
       return this.lineName ? `${this.lineName}#` : ''
     },
+    // 动态获取 composite-name 类型字段
+    compositeNameField() {
+      return this.schema?.fields?.find(f => f.type === 'composite-name')
+    },
     compositeSuffix() {
-      const value = this.modelValue['pole_name'] || ''
+      const field = this.compositeNameField
+      if (!field) return ''
+      const value = this.modelValue[field.key] || ''
       const hashIndex = value.indexOf('#')
       if (hashIndex !== -1) {
         return value.substring(hashIndex + 1)
@@ -603,11 +632,24 @@ export default {
   padding: 0;
 }
 
+/* ---- 分组卡片 ---- */
+.form-group {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0rpx 4rpx 12rpx rgba(0, 0, 0, 0.1);
+}
+
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
 /* ---- 分组标题 ---- */
 .section-header {
-  padding: 24rpx 0 12rpx 0;
+  padding: 0 0 16rpx 0;
+  margin-bottom: 8rpx;
   border-bottom: 1rpx solid #e5e5e5;
-  margin-bottom: 12rpx;
 }
 
 .section-title {

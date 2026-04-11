@@ -7,6 +7,18 @@
                 <input class="search-input" v-model="keyword" placeholder="搜索设备名称..."
                     placeholder-class="search-placeholder" />
             </view>
+
+            <!-- 筛选行：设备类型 -->
+            <scroll-view scroll-x class="filter-row" :show-scrollbar="false">
+                <view class="filter-list">
+                    <view v-for="(item, index) in availableTypes" :key="index" class="filter-tag"
+                        :class="{ 'active': selectedType === item.value }"
+                        :style="selectedType === item.value ? { backgroundColor: themeColor, borderColor: themeColor, color: '#fff' } : {}"
+                        @click="selectType(item.value)">
+                        {{ item.label }}
+                    </view>
+                </view>
+            </scroll-view>
         </view>
 
         <!-- 主内容：设备列表 -->
@@ -63,6 +75,8 @@ export default {
             lineName: '',
             deviceId: '', // 当前编辑的设备ID，用于排除
             keyword: '',
+            selectedType: '', // 当前选中的设备类型，空字符串表示全部
+            availableTypes: [], // 动态提取的所有设备类型
             deviceList: [], // 原始设备列表
             themeColor,
             themeColorLight
@@ -73,12 +87,13 @@ export default {
         /**
          * 过滤后的列表
          * 1. 排除当前正在编辑的设备（防止循环引用）
-         * 2. 根据搜索关键字模糊匹配设备名称（匹配主设备或子设备）
+         * 2. 根据搜索关键字模糊匹配设备名称
+         * 3. 根据选中的设备类型进行筛选
          */
         filteredList() {
             let list = this.deviceList;
 
-            // 用 map 生成新对象，不修改 deviceList 原始数据
+            // 1. 排除当前正在编辑的设备
             if (this.deviceId) {
                 list = list
                     .filter(d => d.id !== this.deviceId)
@@ -88,7 +103,8 @@ export default {
                     }));
             }
 
-            if (!this.keyword) {
+            // 如果没有关键字且没有选择类型，直接返回全部
+            if (!this.keyword && !this.selectedType) {
                 return list.map(d => ({
                     ...d,
                     displayChildren: d.children || []
@@ -96,18 +112,34 @@ export default {
             }
 
             const lowerKw = this.keyword.toLowerCase();
+            const targetType = this.selectedType;
 
             return list.map(d => {
-                const matchParent = d.name && d.name.toLowerCase().includes(lowerKw);
-                const matchedChildren = (d.children || []).filter(c =>
-                    c.name && c.name.toLowerCase().includes(lowerKw)
-                );
+                const dType = d.deviceLabel || d.device_type;
 
+                // 判断主设备是否符合条件
+                const matchParentKw = !lowerKw || (d.name && d.name.toLowerCase().includes(lowerKw));
+                const matchParentType = !targetType || dType === targetType;
+                const matchParent = matchParentKw && matchParentType;
+
+                // 判断子设备是否符合条件
+                const matchedChildren = (d.children || []).filter(c => {
+                    const cType = c.deviceLabel || c.device_type;
+                    const matchChildKw = !lowerKw || (c.name && c.name.toLowerCase().includes(lowerKw));
+                    const matchChildType = !targetType || cType === targetType;
+                    return matchChildKw && matchChildType;
+                });
+
+                // 如果主设备符合，或者有子设备符合
                 if (matchParent || matchedChildren.length > 0) {
                     return {
                         ...d,
+                        // 如果有匹配的子设备，自动展开；否则保持原有展开状态
                         expanded: matchedChildren.length > 0 ? true : d.expanded,
-                        displayChildren: matchParent ? (d.children || []) : matchedChildren
+                        // 如果主设备符合且子设备不符合，显示所有子设备；如果有子设备符合，只显示符合的子设备
+                        displayChildren: matchParent && matchedChildren.length === 0 && !targetType
+                            ? (d.children || [])
+                            : (matchedChildren.length > 0 ? matchedChildren : (matchParent ? d.children || [] : []))
                     };
                 }
                 return null;
@@ -126,16 +158,46 @@ export default {
     methods: {
         async loadData() {
             try {
-                // DAO 已返回结构化的主设备列表（含 children），直接初始化 expanded 即可
                 const mainDevices = await deviceDAO.findAllAvailablePreNodes(this.lineId);
                 this.deviceList = mainDevices.map(d => ({
                     ...d,
                     expanded: false
                 }));
+
+                // 动态提取所有设备类型（包含主设备和子设备）
+                this.extractDeviceTypes(mainDevices);
             } catch (e) {
                 console.error('加载可用上级节点失败:', e);
                 uni.showToast({ title: '加载失败', icon: 'none' });
             }
+        },
+
+        // 提取并去重所有的设备类型
+        extractDeviceTypes(devices) {
+            const typesSet = new Set();
+            devices.forEach(d => {
+                if (d.deviceLabel || d.device_type) {
+                    typesSet.add(d.deviceLabel || d.device_type);
+                }
+                if (d.children && d.children.length > 0) {
+                    d.children.forEach(c => {
+                        if (c.deviceLabel || c.device_type) {
+                            typesSet.add(c.deviceLabel || c.device_type);
+                        }
+                    });
+                }
+            });
+
+            // 构建供筛选的数组
+            this.availableTypes = [
+                { label: '全部', value: '' },
+                ...Array.from(typesSet).map(type => ({ label: type, value: type }))
+            ];
+        },
+
+        // 切换设备类型筛选
+        selectType(typeValue) {
+            this.selectedType = typeValue;
         },
 
         getIcon(deviceType) {
@@ -181,34 +243,18 @@ page {
 /* 顶部固定区域 */
 .header {
     background-color: #ffffff;
-    padding: 20rpx 30rpx;
+    padding: 20rpx 0;
+    /* 调整 padding 适应全宽滚动 */
     box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.05);
     z-index: 10;
     flex-shrink: 0;
 }
 
-.info-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20rpx;
-}
-
-.title {
-    font-size: 36rpx;
-    font-weight: bold;
-    color: #333;
-}
-
-.tag {
-    font-size: 24rpx;
-    padding: 6rpx 16rpx;
-    border-radius: 8rpx;
-    font-weight: 500;
-}
-
 .search-row {
     width: 100%;
+    padding: 0 30rpx;
+    box-sizing: border-box;
+    margin-bottom: 20rpx;
 }
 
 .search-input {
@@ -223,6 +269,39 @@ page {
 
 .search-placeholder {
     color: #999;
+}
+
+/* 筛选行样式 */
+.filter-row {
+    width: 100%;
+    white-space: nowrap;
+}
+
+.filter-list {
+    display: inline-flex;
+    padding: 0 30rpx;
+}
+
+.filter-tag {
+    display: inline-block;
+    padding: 10rpx 24rpx;
+    margin-right: 20rpx;
+    font-size: 26rpx;
+    color: #666;
+    background-color: #f5f7fa;
+    border: 1rpx solid #e4e7ed;
+    border-radius: 30rpx;
+    transition: all 0.2s ease;
+}
+
+.filter-tag:last-child {
+    margin-right: 0;
+}
+
+.filter-tag.active {
+    /* 激活状态的背景色和边框色由内联样式动态注入，这里设置默认激活文字颜色 */
+    color: #ffffff;
+    font-weight: bold;
 }
 
 /* 列表区域 */
@@ -305,7 +384,6 @@ page {
     justify-content: center;
 }
 
-/* 外层容器：固定尺寸，纯粹负责翻转动画 */
 .expand-arrow {
     width: 24rpx;
     height: 24rpx;
@@ -313,15 +391,12 @@ page {
     align-items: center;
     justify-content: center;
     transition: transform 0.3s ease;
-    /* 动画加在容器上 */
 }
 
-/* 展开时：沿 X 轴进行 3D 上下翻转。效果最干净利落，完全没有画圆弧的甩动感 */
 .expand-arrow.expanded {
     transform: rotateX(180deg);
 }
 
-/* 内层伪元素：纯粹负责绘制静态的折角 */
 .expand-arrow::after {
     content: '';
     width: 14rpx;
@@ -329,8 +404,6 @@ page {
     border-right: 4rpx solid #999;
     border-bottom: 4rpx solid #999;
     transform: rotate(45deg);
-    /* 固定为向下的折角 */
-    /* 视觉重心微调：因为折角的线条在右下，视觉偏下，所以用 margin 往上推一点点，使其完美居中 */
     margin-bottom: 6rpx;
 }
 
@@ -342,7 +415,6 @@ page {
 
 .child-item {
     padding: 24rpx 30rpx 24rpx 30rpx;
-    /* 左侧留出主设备图标的缩进 */
     border-bottom: 1rpx solid #f0f0f0;
 }
 

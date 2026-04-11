@@ -7,16 +7,12 @@
         <text class="card-title">{{ currentSchema.preNodeFieldName || '上级节点' }}</text>
       </view>
       <view class="form-item">
-        <picker :range="preNodeOptions" range-key="label" :value="preNodeIndex" @change="onPreNodeChange"
-          :disabled="!hasAvailablePreNodes">
-          <view class="picker-box" :class="{ 'picker-disabled': !hasAvailablePreNodes }">
-            <text :class="prevId ? 'picker-text' : 'picker-placeholder'">
-              {{ hasAvailablePreNodes ? (preNodeDisplay || ('请选择' + (currentSchema.preNodeFieldName || '上级节点'))) :
-                '无可选上级节点' }}
-            </text>
-            <text class="picker-arrow" v-if="hasAvailablePreNodes">›</text>
-          </view>
-        </picker>
+        <view class="picker-box" @click="goToPreNodeSelect">
+          <text :class="prevId ? 'picker-text' : 'picker-placeholder'">
+            {{ preNodeDisplay || ('请选择' + (currentSchema.preNodeFieldName || '上级节点')) }}
+          </text>
+          <text class="picker-arrow">›</text>
+        </view>
       </view>
     </view>
 
@@ -113,8 +109,6 @@ export default {
       parentName: '',
 
       // 上级节点选择
-      preNodeOptions: [],
-      preNodeIndex: 0,
       preNodeDisplay: '',
 
       // 照片数据，结构：{ slotKey: filePath }
@@ -135,10 +129,6 @@ export default {
     /** 上级节点选择是否显示：当前设备类型允许编辑上级节点 */
     showPreNodeSelect() {
       return this.currentSchema.isPreNodeEditable === true
-    },
-    /** 是否有可选上级节点：排除"无上级节点"空选项后还有其他选项 */
-    hasAvailablePreNodes() {
-      return this.preNodeOptions.length > 1
     }
   },
 
@@ -235,8 +225,8 @@ export default {
           }
         }
 
-        // 加载上级节点选项
-        await this.loadPreNodeOptions()
+        // 加载上级节点显示名称
+        await this.loadPreNodeDisplay()
 
         // 将坐标同步到表单属性并计算档距
         this.syncCoordsToAttributes()
@@ -275,8 +265,8 @@ export default {
         this.attributes = {}
         this.photos = {}  // 重置照片
 
-        // 加载上级节点选项
-        await this.loadPreNodeOptions()
+        // 加载上级节点显示名称
+        await this.loadPreNodeDisplay()
 
         this.$nextTick(() => {
           if (this.$refs.formRef) {
@@ -502,88 +492,62 @@ export default {
       }
     },
 
-    /** 加载上级节点选项 */
-    async loadPreNodeOptions() {
-      try {
-        const availableNodes = await deviceDAO.findAvailablePreNodes(this.lineId)
-        console.log("可选上级节点", availableNodes);
-
-
-        // 过滤掉当前编辑的设备（编辑模式）
-        const filteredNodes = this.deviceId
-          ? availableNodes.filter(node => node.id !== this.deviceId)
-          : availableNodes
-
-        // 转换为选项格式
-        this.preNodeOptions = filteredNodes.map(node => ({
-          id: node.id,
-          label: node.name || '未命名',
-          deviceType: node.device_type
-        }))
-
-        // 添加一个空选项
-        this.preNodeOptions.unshift({
-          id: '',
-          label: '无上级节点',
-          deviceType: ''
-        })
-
-        // 设置当前选中的上级节点
-        this.updatePreNodeDisplay()
-      } catch (e) {
-        console.error('加载上级节点选项失败:', e)
-      }
+    /** 跳转到上级节点选择页面 */
+    goToPreNodeSelect() {
+      uni.navigateTo({
+        url: `/pages/device/preNode?lineId=${this.lineId}&lineName=${encodeURIComponent(this.lineName)}&prevId=${this.prevId}&deviceId=${this.deviceId}`,
+        events: {
+          selectPreNode: (data) => {
+            this.handlePreNodeSelected(data)
+          }
+        }
+      })
     },
 
-    /** 更新上级节点显示 */
-    updatePreNodeDisplay() {
+    /** 处理从 preNode.vue 返回的上级节点选择结果 */
+    async handlePreNodeSelected(data) {
+      if (!data) return
+
+      this.prevId = data.id
+      this.preNodeDisplay = data.name || ''
+      this.parentName = data.name || ''
+
+      // 如果选择了上级节点，加载其坐标用于档距计算
+      if (data.id) {
+        try {
+          const prevDevice = await deviceDAO.findById(data.id)
+          if (prevDevice) {
+            this.prevLongitude = prevDevice.longitude || ''
+            this.prevLatitude = prevDevice.latitude || ''
+            this.calcSpanLength()
+          }
+        } catch (e) {
+          console.warn('加载上级设备坐标失败:', e)
+        }
+      } else {
+        this.prevLongitude = ''
+        this.prevLatitude = ''
+        this.calcSpanLength()
+      }
+
+      // 重新生成设备名称
+      this.generateDeviceName()
+    },
+
+    /** 加载上级节点显示名称 */
+    async loadPreNodeDisplay() {
       if (!this.prevId) {
-        this.preNodeIndex = 0
         this.preNodeDisplay = ''
         return
       }
-
-      const index = this.preNodeOptions.findIndex(opt => opt.id === this.prevId)
-      if (index >= 0) {
-        this.preNodeIndex = index
-        this.preNodeDisplay = this.preNodeOptions[index].label
-        // 同步 parentName，确保 generateDeviceName 用到正确的名称
-        this.parentName = this.preNodeOptions[index].label
-      } else {
-        this.preNodeIndex = 0
-        this.preNodeDisplay = ''
-      }
-    },
-
-    /** 上级节点选择变化处理 */
-    onPreNodeChange(e) {
-      const index = e.detail.value
-      const selected = this.preNodeOptions[index]
-
-      if (selected) {
-        this.prevId = selected.id
-        this.preNodeDisplay = selected.label
-        this.parentName = selected.label || ''
-
-        // 如果选择了上级节点，加载其坐标用于档距计算
-        if (selected.id) {
-          deviceDAO.findById(selected.id).then(prevDevice => {
-            if (prevDevice) {
-              this.prevLongitude = prevDevice.longitude || ''
-              this.prevLatitude = prevDevice.latitude || ''
-              this.calcSpanLength()
-            }
-          }).catch(e => {
-            console.warn('加载上级设备坐标失败:', e)
-          })
-        } else {
-          this.prevLongitude = ''
-          this.prevLatitude = ''
-          this.calcSpanLength()
+      try {
+        const device = await deviceDAO.findById(this.prevId)
+        if (device) {
+          this.preNodeDisplay = device.name || '未命名'
+          this.parentName = device.name || ''
         }
-
-        // 重新生成设备名称
-        this.generateDeviceName()
+      } catch (e) {
+        console.error('加载上级节点名称失败:', e)
       }
     },
 

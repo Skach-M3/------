@@ -171,6 +171,59 @@ const deviceDAO = {
     },
 
     /**
+     * 查询指定线路下所有可作为上级节点的设备（包括子设备）
+     * 用于上级节点选择列表页
+     * @param {string} lineId
+     * @returns {Array} 主设备列表，每个主设备包含 children 属性
+     */
+    async findAllAvailablePreNodes(lineId) {
+        const sql = `SELECT * FROM t_device
+      WHERE line_id = ?
+      ORDER BY created_at DESC`
+        const allDevices = await dbHelper.select(sql, [lineId])
+
+        // 过滤出所有 isAvailablePreNode 为 true 的设备
+        const availableDevices = allDevices.filter(device => {
+            const schema = getSchema(device.device_type)
+            return schema && schema.isAvailablePreNode === true
+        })
+
+        // 分离主设备和子设备
+        const mainDevices = []
+        const childDevicesMap = {} // key: parent_id, value: 子设备数组
+
+        availableDevices.forEach(device => {
+            const schema = getSchema(device.device_type)
+            const isChildDevice = device.parent_id && device.parent_id !== ''
+
+            if (isChildDevice) {
+                // 子设备
+                if (!childDevicesMap[device.parent_id]) {
+                    childDevicesMap[device.parent_id] = []
+                }
+                childDevicesMap[device.parent_id].push({
+                    ...device,
+                    deviceLabel: schema.label
+                })
+            } else {
+                // 主设备
+                mainDevices.push({
+                    ...device,
+                    deviceLabel: schema.label,
+                    icon: schema.icon
+                })
+            }
+        })
+
+        // 将子设备附加到对应的主设备
+        mainDevices.forEach(device => {
+            device.children = childDevicesMap[device.id] || []
+        })
+
+        return mainDevices
+    },
+
+    /**
      * 删除设备（同时级联删除其子设备）
      */
     async deleteWithChildren(id) {

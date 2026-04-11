@@ -1,14 +1,9 @@
 <template>
   <view class="page-container">
     <!-- 顶部导航栏 -->
-    <u-navbar
-      :title="isEdit ? '编辑线路' : '新建线路'"
-      :bgColor="themeColor"
-      titleStyle="color: #ffffff; font-weight: bold; font-size: 34rpx;"
-      leftIconColor="#ffffff"
-      :autoBack="true"
-      placeholder
-    ></u-navbar>
+    <u-navbar :title="isEdit ? '编辑线路' : '新建线路'" :bgColor="themeColor"
+      titleStyle="color: #ffffff; font-weight: bold; font-size: 34rpx;" leftIconColor="#ffffff" :autoBack="true"
+      placeholder></u-navbar>
 
     <!-- 表单区域 -->
     <scroll-view scroll-y class="form-container">
@@ -16,42 +11,26 @@
 
         <view class="form-item">
           <text class="form-label required">线路名称</text>
-          <input
-            class="form-input"
-            v-model="formData.name"
-            placeholder="请输入线路名称"
-            placeholder-class="input-placeholder"
-          />
+          <input class="form-input" v-model="formData.name" placeholder="请输入线路名称"
+            placeholder-class="input-placeholder" />
         </view>
 
         <view class="form-item">
           <text class="form-label">所属变电站</text>
-          <input
-            class="form-input"
-            v-model="formData.station"
-            placeholder="请输入所属变电站"
-            placeholder-class="input-placeholder"
-          />
+          <input class="form-input" v-model="formData.station" placeholder="请输入所属变电站"
+            placeholder-class="input-placeholder" />
         </view>
 
         <view class="form-item">
           <text class="form-label">归属单位</text>
-          <input
-            class="form-input"
-            v-model="formData.unit"
-            placeholder="请输入归属单位"
-            placeholder-class="input-placeholder"
-          />
+          <input class="form-input" v-model="formData.unit" placeholder="请输入归属单位"
+            placeholder-class="input-placeholder" />
         </view>
 
         <view class="form-item">
           <text class="form-label">采录人</text>
-          <input
-            class="form-input"
-            v-model="formData.recorder"
-            placeholder="请输入采录人"
-            placeholder-class="input-placeholder"
-          />
+          <input class="form-input" v-model="formData.recorder" placeholder="请输入采录人"
+            placeholder-class="input-placeholder" />
         </view>
 
         <view class="form-item">
@@ -83,8 +62,8 @@
 import { ref, reactive } from 'vue';
 import { onLoad } from '@dcloudio/uni-app';
 import { lineDAO } from '@/dao/lineDAO';
+import { themeColor } from '@/static/themeColor.js';
 
-const themeColor = '#006567';
 const isEdit = ref(false);
 const lineId = ref<number | null>(null);
 

@@ -62,10 +62,7 @@
 import { ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { lineDAO } from '@/dao/lineDAO';
-
-// 主题色配置
-const themeColor = '#006567';
-const themeColorLight = 'rgba(0, 101, 103, 0.1)';
+import { themeColor, themeColorLight } from '@/static/themeColor.js';
 
 // 搜索关键词
 const keyword = ref('');

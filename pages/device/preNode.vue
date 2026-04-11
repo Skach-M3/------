@@ -165,10 +165,16 @@ export default {
 </script>
 
 <style scoped>
+page {
+    background-color: #f5f7fa;
+    height: 100%;
+}
+
 .page {
     display: flex;
     flex-direction: column;
     height: 100vh;
+    overflow: hidden;
     background-color: #f5f7fa;
 }
 
@@ -178,6 +184,7 @@ export default {
     padding: 20rpx 30rpx;
     box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.05);
     z-index: 10;
+    flex-shrink: 0;
 }
 
 .info-row {
@@ -221,6 +228,7 @@ export default {
 /* 列表区域 */
 .list-container {
     flex: 1;
+    height: 0;
     padding: 20rpx;
     box-sizing: border-box;
 }

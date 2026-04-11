@@ -36,7 +36,7 @@
 		{
 			"path": "pages/device/preNode",
 			"style": {
-				"navigationBarTitleText": "上级节点可用设备"
+				"navigationBarTitleText": "可选节点"
 			}
 		},
 		{

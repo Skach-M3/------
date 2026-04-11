@@ -73,6 +73,7 @@ export default {
         return {
             lineId: '',
             lineName: '',
+            isPreNodeSelect: false, // 是否是在选择上级节点，用于兼容地图页搜索和上级节点选择
             deviceId: '', // 当前编辑的设备ID，用于排除
             keyword: '',
             selectedType: '', // 当前选中的设备类型，空字符串表示全部
@@ -151,6 +152,7 @@ export default {
         this.lineId = query.lineId || '';
         this.lineName = query.lineName ? decodeURIComponent(query.lineName) : '';
         this.deviceId = query.deviceId || '';
+        this.isPreNodeSelect = query.isPreNodeSelect === 'true' || false;
 
         this.loadData();
     },
@@ -158,7 +160,13 @@ export default {
     methods: {
         async loadData() {
             try {
-                const mainDevices = await deviceDAO.findAllAvailablePreNodes(this.lineId);
+                let mainDevices = [];
+                if (this.isPreNodeSelect) {
+                    mainDevices = await deviceDAO.findAllAvailablePreNodes(this.lineId);
+                } else {
+                    mainDevices = await deviceDAO.findAllByLineWithChildren(this.lineId);
+                }
+
                 this.deviceList = mainDevices.map(d => ({
                     ...d,
                     expanded: false
@@ -214,11 +222,27 @@ export default {
         selectDevice(device) {
             const eventChannel = this.getOpenerEventChannel();
             if (eventChannel && eventChannel.emit) {
-                eventChannel.emit('selectPreNode', {
-                    id: device.id,
-                    name: device.name,
-                    device_type: device.device_type
-                });
+                if (this.isPreNodeSelect) {
+                    eventChannel.emit('selectPreNode', {
+                        id: device.id,
+                        name: device.name,
+                        device_type: device.device_type
+                    });
+                } else {
+                    // 非上级节点选择，如果是子节点返回其父节点信息
+                    let selectedDevice = device;
+                    if (device.parent_id && device.parent_id !== '') {
+                        const parentDevice = this.deviceList.find(d => d.id === device.parent_id);
+                        if (parentDevice) {
+                            selectedDevice = parentDevice;
+                        }
+                    }
+                    eventChannel.emit('selectDevice', {
+                        id: selectedDevice.id,
+                        name: selectedDevice.name,
+                        device_type: selectedDevice.device_type
+                    });
+                }
             }
             uni.navigateBack();
         }

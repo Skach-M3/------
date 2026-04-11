@@ -495,7 +495,7 @@ export default {
     /** 跳转到上级节点选择页面 */
     goToPreNodeSelect() {
       uni.navigateTo({
-        url: `/pages/device/preNode?lineId=${this.lineId}&lineName=${encodeURIComponent(this.lineName)}&prevId=${this.prevId}&deviceId=${this.deviceId}`,
+        url: `/pages/device/preNode?lineId=${this.lineId}&lineName=${encodeURIComponent(this.lineName)}&deviceId=${this.deviceId}&isPreNodeSelect=true`,
         events: {
           selectPreNode: (data) => {
             this.handlePreNodeSelected(data)

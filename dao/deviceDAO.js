@@ -134,6 +134,48 @@ const deviceDAO = {
         return await dbHelper.select(sql, [lineId, deviceType])
     },
 
+    /**
+     * 查询指定线路下所有设备，并将子设备放在父设备的 children 属性中
+     * @param {string} lineId
+     * @returns {Array} 主设备列表，每个主设备包含 children 属性
+     */
+    async findAllByLineWithChildren(lineId) {
+        const sql = `SELECT * FROM t_device
+      WHERE line_id = ?
+      ORDER BY created_at DESC`
+        const allDevices = await dbHelper.select(sql, [lineId])
+        // 分离主设备和子设备
+        const mainDevices = []
+        const childDevicesMap = {} // key: parent_id, value: 子设备数组
+        allDevices.forEach(device => {
+            const schema = getSchema(device.device_type)
+            const isChildDevice = device.parent_id && device.parent_id !== ''
+            if (isChildDevice) {
+                // 子设备
+                if (!childDevicesMap[device.parent_id]) {
+                    childDevicesMap[device.parent_id] = []
+                }
+                childDevicesMap[device.parent_id].push({
+                    ...device,
+                    deviceLabel: schema ? schema.label : device.device_type
+                })
+            } else {
+                // 主设备
+                mainDevices.push({
+                    ...device,
+                    deviceLabel: schema ? schema.label : device.device_type,
+                    icon: schema ? schema.icon : ''
+                })
+            }
+        })
+        // 将子设备附加到对应的主设备
+        mainDevices.forEach(device => {
+            device.children = childDevicesMap[device.id] || []
+        })
+        return mainDevices
+    },
+
+
     // ← 新增：查询线路下所有设备（不区分类型），用于地图绘制
     /**
      * 查询指定线路下所有设备（按 sort_order、created_at 升序）

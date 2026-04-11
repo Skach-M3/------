@@ -15,7 +15,8 @@
       :change:debugMarker="mapModule.onDebugMarkerChange" :showNamesProp="showDeviceNames"
       :change:showNamesProp="mapModule.onShowNamesChange" :movingDeviceIdProp="movingDeviceIdProp"
       :change:movingDeviceIdProp="mapModule.onMovingDeviceIdChange" :confirmMoveProp="confirmMoveProp"
-      :change:confirmMoveProp="mapModule.onConfirmMoveChange"></view>
+      :change:confirmMoveProp="mapModule.onConfirmMoveChange" :blinkDeviceIdProp="blinkDeviceIdProp"
+      :change:blinkDeviceIdProp="mapModule.onBlinkDeviceIdChange"></view>
 
     <!-- 移动模式 - 中心设备标记 -->
     <view v-if="isMovingDevice" class="move-center-pin">
@@ -37,11 +38,7 @@
     <view class="right-tools" v-show="!isMovingDevice">
       <!-- 组1：功能菜单 -->
       <view class="tool-group">
-        <view class="tool-item" @click="toast('数据')">
-          <text class="icon">📋</text>
-          <text class="text">数据</text>
-        </view>
-        <view class="tool-item" @click="toast('搜索')">
+        <view class="tool-item" @click="goToDeviceSearch">
           <text class="icon">🔍</text>
           <text class="text">搜索</text>
         </view>
@@ -97,14 +94,14 @@
     <!-- 底部设备信息面板 -->
     <view class="device-panel-wrapper" v-if="showDevicePanel && !isMovingDevice">
       <!-- 左上角切换按钮 -->
-      <view class="panel-switch-btns">
+      <!-- <view class="panel-switch-btns">
         <view class="switch-btn" @click="prevDevice">
           <text class="arrow-icon">&lt;</text>
         </view>
         <view class="switch-btn" @click="nextDevice">
           <text class="arrow-icon">&gt;</text>
         </view>
-      </view>
+      </view> -->
 
       <!-- 白色主面板 -->
       <view class="device-panel">
@@ -272,6 +269,8 @@ const currentDeviceInfo = ref({
 const isMovingDevice = ref(false)
 
 const confirmMoveProp = ref(0);
+// 触发地图上设备名称闪烁
+const blinkDeviceIdProp = ref<{ id: string; ts: number } | null>(null);
 
 const movingDeviceOriginal = ref<{
   id: string;
@@ -530,13 +529,44 @@ const goBack = () => {
   uni.navigateBack();
 };
 
-// 提示占位
-const toast = (name: string) => {
-  uni.showToast({ title: `点击了: ${name}`, icon: 'none' });
-};
+const lineId = ref('');
+const lineName = ref('');
 
 // 名称显示开关，默认显示
 const showDeviceNames = ref(true);
+
+
+/** 跳转到节点搜索页面 */
+const goToDeviceSearch = () => {
+  uni.navigateTo({
+    url: `/pages/device/preNode?lineId=${lineId.value}&lineName=${encodeURIComponent(lineName.value)}`,
+    events: {
+      selectDevice: (device: any) => {
+        searchDevice(device)
+      }
+    }
+  })
+};
+
+const searchDevice = (device: any) => {
+  // 1. 在已加载的设备列表中查找含坐标的完整设备记录
+  const devices = devicesProp.value;
+  const found = devices.find((d: any) => String(d.id) === String(device.id));
+
+  if (!found) {
+    uni.showToast({ title: '地图上未找到该设备', icon: 'none' });
+    return;
+  }
+
+  // 2. 复用 selectDevice：计算距离、更新面板信息、flyTo
+  selectDevice(found);
+  showDevicePanel.value = true;
+
+  // 3. 通知 RenderJS 对该设备名称执行红色闪烁 5 次
+  //    用 ts 保证每次搜索同一设备时 prop 也会变化，从而触发 watch
+  blinkDeviceIdProp.value = { id: String(device.id), ts: Date.now() };
+};
+
 
 const toggleDeviceNames = () => {
   showDeviceNames.value = !showDeviceNames.value;
@@ -681,7 +711,7 @@ const getFabItemStyle = (index: number) => {
   };
 };
 
-// ← 修改：跳转到设备编辑页
+// 跳转到设备编辑页
 const handleFabClick = (item: any) => {
   isFabOpen.value = false;
   // DEBUG START — 优先使用假定位坐标
@@ -715,9 +745,6 @@ const loadDevices = async () => {
     console.error('加载设备列表失败:', e);
   }
 };
-
-const lineId = ref('');
-const lineName = ref('');
 
 onLoad((options) => {
   if (options && options.lineId) {
@@ -1176,6 +1203,60 @@ export default {
 
       this.layers.base = L.tileLayer(layerUrl, { maxZoom: 18 }).addTo(this.map);
       this.layers.label = L.tileLayer(labelUrl, { maxZoom: 18 }).addTo(this.map);
+    },
+    /** 监听闪烁指令：flyTo 动画结束后对设备名称执行红色闪烁 */
+    onBlinkDeviceIdChange(newValue) {
+      if (!newValue || !this.map) return;
+      var self = this;
+      // flyTo duration 约 0.5 s，延迟 700 ms 确保地图稳定、marker 已渲染
+      setTimeout(function() {
+        self._blinkDeviceName(newValue.id);
+      }, 700);
+    },
+
+    /** 找到 marker 的 DOM，驱动名称标签红色闪烁 5 次 */
+    _blinkDeviceName(deviceId) {
+      var self = this;
+      var marker = this.deviceMarkers[deviceId];
+      if (!marker) return;
+
+      var el = marker.getElement ? marker.getElement() : null;
+      if (!el) {
+        // marker 元素偶尔在 flyTo 结束前仍未挂载，再等一次
+        setTimeout(function() {
+          var el2 = marker.getElement ? marker.getElement() : null;
+          if (el2) self._doBlinkName(el2);
+        }, 400);
+        return;
+      }
+      this._doBlinkName(el);
+    },
+
+    _doBlinkName(markerEl) {
+      var self = this;
+      var nameSpan = markerEl.querySelector('.device-name-label');
+      if (!nameSpan) return;
+
+      // 临时强制显示（即使"名称"开关为关闭状态，搜索时也应让用户看到闪烁）
+      nameSpan.style.display = 'inline';
+
+      var count = 0;
+      var totalBlinks = 5;          // 闪烁次数
+      var interval = 350;           // 每半拍毫秒数
+      var originalColor = '#ffffff';
+
+      var timer = setInterval(function() {
+        count++;
+        // 奇数拍 → 红色；偶数拍 → 恢复白色
+        nameSpan.style.color = (count % 2 === 1) ? '#ff0000' : originalColor;
+
+        if (count >= totalBlinks * 2) {
+          clearInterval(timer);
+          // 动画结束后恢复颜色，并按当前"名称显示"开关状态决定是否隐藏
+          nameSpan.style.color = originalColor;
+          nameSpan.style.display = self.showNames ? 'inline' : 'none';
+        }
+      }, interval);
     },
     // DEBUG START
     onDebugMarkerChange(newValue) {

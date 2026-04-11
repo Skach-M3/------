@@ -1006,11 +1006,19 @@ export default {
     
       for (var i = 0; i < devices.length; i++) { 
         var device=devices[i];
+        // 先注册（无坐标的子设备也需要被记录，用于 getTopLevelDevice 追溯）
+        deviceMap[device.id] = {
+          id: device.id,
+          latlng: null,
+          prev_id: device.prev_id,
+          parent_id: device.parent_id
+        };
         var lat=parseFloat(device.latitude);
         var lng=parseFloat(device.longitude); 
         
         if (isNaN(lat) || isNaN(lng) || (lat===0 && lng===0)) continue;
-        var latlng=[lat,lng];
+        var latlng = [lat, lng];
+        deviceMap[device.id].latlng = latlng; // 补充有效坐标
         var displayName=device.name || '未命名' ;
         var svgHtml=this.getDeviceSvg(device.device_type);
         var color='#3bbffb';
@@ -1101,22 +1109,33 @@ export default {
         }
       }
 
+      // 辅助函数：向上追溯 parent_id，返回顶层设备对象
+      function getTopLevelDevice(deviceId) {
+        var maxDepth = 20;
+        var current = deviceMap[deviceId];
+        
+        while (current && current.parent_id && current.parent_id !== '' && maxDepth-- > 0) {
+          var parent = deviceMap[current.parent_id];
+          if (!parent) break;
+          current = parent;
+        }
+        return current || null;
+      }
+      
       // 基于 prev_id 连接顶层设备，支持分支线路
       for (var j = 0; j < topLevelDevices.length; j++) {
-        var currentDevice = topLevelDevices[j];
-        
-        // 如果设备有 prev_id，则连接到前一个设备
-        if (currentDevice.prev_id && currentDevice.prev_id !== '' && deviceMap[currentDevice.prev_id]) {
-          var prevDevice = deviceMap[currentDevice.prev_id];
-          
-          // 绘制连线
+        var currentDevice=topLevelDevices[j];
+        if (currentDevice.prev_id && currentDevice.prev_id !=='' ) { 
+          // 若 prev_id 指向子设备，自动上溯到其顶层父设备 
+          var prevDevice = getTopLevelDevice(currentDevice.prev_id);
+          if (!prevDevice) continue;
+
           var polyline = L.polyline([prevDevice.latlng, currentDevice.latlng], {
             color: '#03da6b',
             weight: 2,
             opacity: 1
           }).addTo(this.deviceLayerGroup);
 
-          // 存储 polyline 引用，双向关联两端设备
           if (!this.devicePolylines[currentDevice.id]) this.devicePolylines[currentDevice.id] = [];
           this.devicePolylines[currentDevice.id].push(polyline);
           if (!this.devicePolylines[prevDevice.id]) this.devicePolylines[prevDevice.id] = [];

@@ -22,10 +22,10 @@
 
           <!-- composite-name 复合名称字段 -->
           <view v-else-if="field.type === 'composite-name'" class="composite-name-wrapper">
-            <input class="composite-name-prefix" :value="compositePrefix" disabled />
-            <input class="composite-name-suffix" :value="compositeSuffix"
+            <textarea class="composite-name-prefix" :value="compositePrefix" disabled auto-height />
+            <textarea class="composite-name-suffix" :value="compositeSuffix"
               :placeholder="field.placeholder || ('请输入' + field.label)"
-              @input="onCompositeInput(field.key, $event.detail.value)" />
+              @input="onCompositeInput(field.key, $event.detail.value)" auto-height />
           </view>
 
           <!-- number -->
@@ -257,7 +257,7 @@ export default {
     }
   },
 
-  emits: ['update:modelValue', 'update:modelValue', 'take-photo', 'preview-photo', 'delete-photo'],
+  emits: ['update:modelValue', 'take-photo', 'preview-photo', 'delete-photo'],
 
   // ===== data 新增 =====
   data() {
@@ -304,8 +304,9 @@ export default {
     },
     compositeSuffix() {
       const value = this.modelValue['pole_name'] || ''
-      if (value && value.includes('#')) {
-        return value.split('#')[1] || ''
+      const hashIndex = value.indexOf('#')
+      if (hashIndex !== -1) {
+        return value.substring(hashIndex + 1)
       }
       return value
     },
@@ -560,6 +561,12 @@ export default {
           if (!Array.isArray(val) || val.length === 0) {
             errors.push(field.label + '不能为空')
           }
+        } else if (field.type === 'composite-name') {
+          // 复合名称字段：只验证后缀部分
+          const suffix = this.compositeSuffix
+          if (!suffix || suffix.trim() === '') {
+            errors.push(field.label + '不能为空')
+          }
         } else {
           if (val === undefined || val === null || val === '') {
             errors.push(field.label + '不能为空')
@@ -649,34 +656,28 @@ export default {
 /* ---- 复合名称输入框 ---- */
 .composite-name-wrapper {
   display: flex;
-  flex-direction: row;
-  align-items: center;
+  flex-direction: column;
   gap: 12rpx;
 }
 
 .composite-name-prefix {
-  flex: 0 0 auto;
-  min-width: 100rpx;
-  max-width: 200rpx;
-  height: 72rpx;
+  width: 100%;
+  min-height: 34rpx;
   border: 1rpx solid #dcdfe6;
   border-radius: 8rpx;
-  padding: 0 20rpx;
+  padding: 16rpx 20rpx;
   font-size: 28rpx;
   color: #333;
   background: #f5f7fa;
   box-sizing: border-box;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .composite-name-suffix {
-  flex: 1;
-  height: 72rpx;
+  width: 100%;
+  min-height: 34rpx;
   border: 1rpx solid #dcdfe6;
   border-radius: 8rpx;
-  padding: 0 20rpx;
+  padding: 16rpx 20rpx;
   font-size: 28rpx;
   color: #333;
   background: #fff;
@@ -686,7 +687,9 @@ export default {
 /* ---- 多行文本框 ---- */
 .form-textarea {
   width: 100%;
-  min-height: 160rpx;
+  min-height: 34rpx;
+  max-height: 100rpx;
+  overflow: auto;
   border: 1rpx solid #dcdfe6;
   border-radius: 8rpx;
   padding: 16rpx 20rpx;
@@ -976,7 +979,7 @@ export default {
   height: 80rpx;
   border: 2rpx solid #dcdcdc;
   border-radius: 12rpx;
-  padding: 1 24rpx;
+  padding: 0 24rpx;
   font-size: 28rpx;
   color: #333333;
   background-color: #f9f9f9;

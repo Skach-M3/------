@@ -300,7 +300,9 @@ export default {
     /**
      * 自动生成设备名称
      * 格式：线路名#用户自定义(杆塔)
-     * 用户自定义部分：自动填入上级节点名称，最后一位+1
+     * 杆塔命名规则：
+     *   - 如果父节点名字最后一个字是"杆"，取"杆"字前的数字（忽略空格）+1
+     *   - 如果最后一个字不是"杆"，直接填入父节点名字
      */
     generateDeviceName() {
       const nameField = this.currentSchema.nameField
@@ -312,43 +314,34 @@ export default {
       // 根据设备类型应用不同的命名规则
       switch (this.deviceType) {
         case 'pole':
-          // 杆塔的命名规则
-          if (this.parentName) {
-            // 如果上级节点名称包含"#"，提取第一个"#"后面的全部内容
-            const hashIndex = this.parentName.indexOf('#')
-            if (hashIndex !== -1) {
-              suffix = this.parentName.substring(hashIndex + 1)
-            } else {
-              suffix = this.parentName
-            }
-            const match = suffix.match(/(\d+)$/)
-            if (match) {
-              const numStr = match[1]
-              const nextNum = parseInt(numStr, 10) + 1
-              // 保持原有位数，如 "004" → "005"，"009" → "010"
-              const nextStr = String(nextNum).padStart(numStr.length, '0')
-              suffix = suffix.slice(0, -numStr.length) + nextStr
-            }
-          }
-          break
-
         case 'cable_turning_point':
           // 杆塔的命名规则
           if (this.parentName) {
-            // 如果上级节点名称包含"#"，提取第一个"#"后面的全部内容
+            // 提取第一个"#"后面的内容（或整个 parentName）
             const hashIndex = this.parentName.indexOf('#')
-            if (hashIndex !== -1) {
-              suffix = this.parentName.substring(hashIndex + 1)
+            const namePart = hashIndex !== -1
+              ? this.parentName.substring(hashIndex + 1)
+              : this.parentName
+
+            // 检查最后一个字是否是"杆"
+            const lastChar = namePart.charAt(namePart.length - 1)
+            if (lastChar === '杆') {
+              // 取"杆"字前的部分，移除空格后匹配数字
+              const beforePole = namePart.slice(0, -1).replace(/\s/g, '')
+              const match = beforePole.match(/(\d+)$/)
+              if (match) {
+                const numStr = match[1]
+                const nextNum = parseInt(numStr, 10) + 1
+                // 保持原有位数
+                const nextStr = String(nextNum).padStart(numStr.length, '0')
+                suffix = beforePole.slice(0, -numStr.length) + nextStr + '杆'
+              } else {
+                // 没有数字，直接填入父节点名
+                suffix = namePart
+              }
             } else {
-              suffix = this.parentName
-            }
-            const match = suffix.match(/(\d+)$/)
-            if (match) {
-              const numStr = match[1]
-              const nextNum = parseInt(numStr, 10) + 1
-              // 保持原有位数，如 "004" → "005"，"009" → "010"
-              const nextStr = String(nextNum).padStart(numStr.length, '0')
-              suffix = suffix.slice(0, -numStr.length) + nextStr
+              // 最后一个字不是"杆"，直接填入父节点名
+              suffix = namePart
             }
           }
           break

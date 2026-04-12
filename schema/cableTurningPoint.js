@@ -179,7 +179,7 @@ export default {
             exportLabel: '备注2'
         },
         {
-            key: 'distance',
+            key: 'span_length',
             label: '距离 (m)',
             group: '其他',
             type: 'auto-calc',

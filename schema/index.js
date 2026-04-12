@@ -12,8 +12,7 @@ import transformSchema from './transformer.js'
 import meterSchema from './meter.js'
 import stationSchema from './station.js'
 import stationSwitchgearSchema from './stationSwitchgear.js'
-
-// 后续新增设备类型时在此导入并注册：
+import subStationSchema from './subStation.js'
 
 const schemas = {
     pole: poleSchema,
@@ -23,6 +22,7 @@ const schemas = {
     meter: meterSchema,
     station: stationSchema,
     station_switchgear: stationSwitchgearSchema,
+    substation: subStationSchema,
     // wire: wireSchema,
     // switch: switchSchema,
 }

@@ -18,6 +18,7 @@ export default {
             group: '基础信息',
             type: 'composite-name',
             required: true,
+            isCopyable: true,
             placeholder: '输入拐点名称',
             exportOrder: 1,
             exportLabel: '拐点名称'
@@ -28,12 +29,13 @@ export default {
             group: '基础信息',
             type: 'select',
             required: true,
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '电缆井', value: '电缆井' },
                 { label: '电缆沟', value: '电缆沟' },
                 { label: '电缆桩', value: '电缆桩' },
-                { label: '虚拟点', value: '虚拟点' },
-                { label: '其他', value: '其他' }
+                { label: '虚拟点', value: '虚拟点' }
             ],
             exportOrder: 2,
             exportLabel: '拐点类型'
@@ -45,9 +47,10 @@ export default {
             label: '线缆类型',
             group: '线缆信息',
             type: 'select',
+            isCopyable: true,
             options: [
-                { label: '电缆', value: '电缆' },
-                { label: '其他', value: '其他' }
+                { label: '其他', value: '其他' },
+                { label: '电缆', value: '电缆' }
             ],
             exportOrder: 3,
             exportLabel: '线缆类型'
@@ -57,10 +60,11 @@ export default {
             label: '敷设方式',
             group: '线缆信息',
             type: 'select',
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '地埋', value: '地埋' },
-                { label: '架空', value: '架空' },
-                { label: '其他', value: '其他' }
+                { label: '架空', value: '架空' }
             ],
             exportOrder: 4,
             exportLabel: '敷设方式'
@@ -72,6 +76,7 @@ export default {
             type: 'cascading-select',
             dependsOn: 'cable_type',
             allowCustom: true,
+            isCopyable: true,
             optionsMap: {
                 '电缆': [
                     { label: '3*VLV22-25  铝', value: '3*VLV22-25  铝' },
@@ -175,14 +180,14 @@ export default {
         },
         {
             key: 'distance',
-            label: '距离/m',
+            label: '距离 (m)',
             group: '其他',
             type: 'auto-calc',
             calcType: 'distance_from_prev',
             decimal: 2,
             editable: false,
             exportOrder: 8,
-            exportLabel: '距离/m'
+            exportLabel: '距离 (m)'
         },
         {
             key: 'longitude',

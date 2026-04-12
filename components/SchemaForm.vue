@@ -111,6 +111,12 @@
                 @click="onToggleMulti(field.key, getOptValue(opt))">
                 <text class="option-text">{{ getOptLabel(opt) }}</text>
               </view>
+              <!-- 自定义值标签 -->
+              <view v-for="(cv, cvIdx) in getCustomValues(field.key)" :key="'cv_' + cvIdx"
+                class="option-btn option-active option-custom">
+                <text class="option-text">{{ cv }}</text>
+                <text class="option-remove-icon" @click.stop="removeCustomValue(field.key, cvIdx)">×</text>
+              </view>
             </view>
 
             <!-- auto-calc 只读计算字段 -->
@@ -205,6 +211,31 @@
         </view>
       </view>
     </view>
+    <!-- ===== 新增输入其他选项弹窗 ===== -->
+    <view v-if="customInputModal.visible" class="modal-mask" @click.self="onCancelCustomInput">
+      <view class="modal-panel" @click.stop>
+        <!-- 标题 -->
+        <view class="modal-header">
+          <text class="modal-title">输入自定义选项</text>
+        </view>
+        <!-- 输入框 -->
+        <view class="modal-body">
+          <input v-model="customInputModal.inputValue" class="modal-input" placeholder="请输入自定义内容"
+            placeholder-class="modal-input-placeholder" maxlength="20" focus
+            @input="customInputModal.inputValue = $event.detail.value" />
+        </view>
+        <!-- 按钮 -->
+        <view class="modal-footer">
+          <view class="modal-btn modal-btn-cancel" @click="onCancelCustomInput">
+            <text class="modal-btn-text">取消</text>
+          </view>
+          <view class="modal-footer-divider"></view>
+          <view class="modal-btn modal-btn-confirm" @click="onConfirmCustomInput">
+            <text class="modal-btn-text modal-btn-text-primary">确认</text>
+          </view>
+        </view>
+      </view>
+    </view>
     <!-- ===== 搜索选择弹窗 (选项>10时触发) ===== -->
     <view v-if="searchSelectModal.visible" class="search-modal-mask" @click="closeSearchSelect">
       <view class="search-modal-panel" @click.stop>
@@ -266,6 +297,13 @@ export default {
   // ===== data 新增 =====
   data() {
     return {
+      customValues: {},       // { [fieldKey]: string[] }
+      customInputModal: {
+        visible: false,
+        fieldKey: '',
+        inputValue: ''
+      },
+      _customValuesInited: false,
       searchSelectModal: {
         visible: false,
         fieldKey: '',
@@ -290,6 +328,19 @@ export default {
       // 相机图标 base64 SVG
       cameraIconSvg: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z'/%3E%3Ccircle cx='12' cy='13' r='4'/%3E%3C/svg%3E"
     };
+  },
+
+  watch: {
+    modelValue: {
+      handler(val) {
+        if (this._customValuesInited) return
+        if (!val || Object.keys(val).length === 0) return
+        this.initCustomValues()
+        this._customValuesInited = true
+      },
+      immediate: true,
+      deep: true
+    }
   },
 
   computed: {
@@ -375,6 +426,12 @@ export default {
 
     onSearchSelectConfirm(opt) {
       const value = this.getOptValue(opt);
+      //  拦截"其他"
+      if (value === '其他') {
+        this.openCustomInput(this.searchSelectModal.fieldKey, false)
+        this.closeSearchSelect()
+        return
+      }
       this.onInput(this.searchSelectModal.fieldKey, value);
       this.closeSearchSelect();
     },
@@ -445,12 +502,23 @@ export default {
     onPickerChange(key, options, e) {
       const idx = e.detail.value
       const opt = options[idx]
+      const val = this.getOptValue(opt)
+      // 拦截"其他"
+      if (val === '其他') {
+        this.openCustomInput(key, false)
+        return
+      }
       if (opt !== undefined) {
-        this.onInput(key, this.getOptValue(opt))
+        this.onInput(key, val)
       }
     },
 
     onToggleMulti(key, optValue) {
+      // 拦截"其他"，打开自定义输入弹窗
+      if (optValue === '其他') {
+        this.openCustomInput(key, true)
+        return
+      }
       const current = Array.isArray(this.modelValue[key])
         ? [...this.modelValue[key]]
         : []
@@ -468,6 +536,61 @@ export default {
       const val = this.modelValue[key]
       return Array.isArray(val) && val.includes(optValue)
     },
+
+    /**
+     *  ==================自定义输出其他相关=================
+     */
+
+    openCustomInput(key, isMulti = true) {
+      this.customInputModal = { visible: true, fieldKey: key, inputValue: '', isMulti }
+    },
+
+    onConfirmCustomInput() {
+      const { fieldKey, inputValue, isMulti } = this.customInputModal
+      const val = inputValue.trim()
+      if (!val) {
+        uni.showToast({ title: '请输入内容', icon: 'none' })
+        return
+      }
+
+      if (isMulti) {
+        // checkbox：追加到数组
+        if (!this.customValues[fieldKey]) {
+          this.$set(this.customValues, fieldKey, [])
+        }
+        // 允许重复值，每次点击都是新增一条
+        this.customValues[fieldKey].push(val)
+        // 同步到 modelValue
+        const current = [...(this.modelValue[fieldKey] || [])]
+        current.push(val)
+        this.$emit('update:modelValue', { ...this.modelValue, [fieldKey]: current })
+      } else {
+        // select / radio：直接替换当前值
+        this.$emit('update:modelValue', { ...this.modelValue, [fieldKey]: val })
+      }
+
+      this.customInputModal.visible = false
+    },
+
+    onCancelCustomInput() {
+      this.customInputModal.visible = false
+    },
+
+    getCustomValues(key) {
+      return this.customValues[key] || []
+    },
+
+    removeCustomValue(key, idx) {
+      const list = this.customValues[key] || []
+      const val = list[idx]
+      list.splice(idx, 1)
+      const current = [...(this.modelValue[key] || [])]
+      const vIdx = current.lastIndexOf(val)
+      if (vIdx > -1) current.splice(vIdx, 1)
+      this.$emit('update:modelValue', { ...this.modelValue, [key]: current })
+    },
+
+    //  ==============================================
 
     // 点击未拍照占位符
     onSlotTap(slot) {
@@ -622,7 +745,21 @@ export default {
       if (changed) {
         this.emitUpdate(newVal)
       }
-    }
+    },
+
+    initCustomValues() {
+      const fields = this.schema?.fields || []
+      fields.forEach(field => {
+        if (field.type !== 'checkbox' && field.type !== 'multi-select') return
+        const savedVals = this.modelValue[field.key]
+        if (!Array.isArray(savedVals) || savedVals.length === 0) return
+        const predefined = (field.options || []).map(opt => this.getOptValue(opt))
+        const customs = savedVals.filter(v => !predefined.includes(v))
+        if (customs.length > 0) {
+          this.$set(this.customValues, field.key, [...customs])
+        }
+      })
+    },
   }
 }
 </script>
@@ -754,6 +891,8 @@ export default {
   border: 1rpx solid #dcdfe6;
   border-radius: 8rpx;
   background: #fff;
+  display: inline-flex;
+  align-items: center;
 }
 
 .option-btn.option-active {
@@ -767,6 +906,24 @@ export default {
 }
 
 .option-active .option-text {
+  color: #2979ff;
+}
+
+.option-remove-icon {
+  margin-left: 16rpx;
+  /* 增加左边距，让它离文字远一点 */
+  font-size: 32rpx;
+  /* 让 x 稍微大一点点更好点击 */
+  color: #999;
+  line-height: 1;
+  /* 避免行高导致垂直方向不对齐 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 新增：激活状态下，让 x 的颜色和主体颜色一致 */
+.option-active .option-remove-icon {
   color: #2979ff;
 }
 
@@ -1025,6 +1182,7 @@ export default {
   font-size: 28rpx;
   color: #333333;
   background-color: #f9f9f9;
+  box-sizing: border-box;
 }
 
 .modal-input-placeholder {

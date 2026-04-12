@@ -19,6 +19,7 @@ export default {
             group: '基础信息',
             type: 'composite-name',
             required: true,
+            isCopyable: true,
             placeholder: '输入设备名称',
             exportOrder: 1,
             exportLabel: '设备名称'
@@ -29,11 +30,12 @@ export default {
             group: '基础信息',
             type: 'select',
             required: true,
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '无法识别', value: '无法识别' },
                 { label: '公用变', value: '公用变' },
-                { label: '专用变', value: '专用变' },
-                { label: '其他', value: '其他' }
+                { label: '专用变', value: '专用变' }
             ],
             exportOrder: 2,
             exportLabel: '使用性质'
@@ -44,7 +46,9 @@ export default {
             group: '基础信息',
             type: 'select',
             required: true,
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '无法识别', value: '无法识别' },
                 { label: '农村公变', value: '农村公变' },
                 { label: '小区公变', value: '小区公变' },
@@ -54,8 +58,7 @@ export default {
                 { label: '政府专变', value: '政府专变' },
                 { label: '路灯专变', value: '路灯专变' },
                 { label: '工厂专变', value: '工厂专变' },
-                { label: '通信专变', value: '通信专变' },
-                { label: '其他', value: '其他' }
+                { label: '通信专变', value: '通信专变' }
             ],
             exportOrder: 3,
             exportLabel: '用电性质'
@@ -66,11 +69,12 @@ export default {
             group: '基础信息',
             type: 'select',
             required: true,
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '油浸式', value: '油浸式' },
                 { label: '干式变', value: '干式变' },
-                { label: '箱式变', value: '箱式变' },
-                { label: '其他', value: '其他' }
+                { label: '箱式变', value: '箱式变' }
             ],
             exportOrder: 4,
             exportLabel: '设备类型'
@@ -80,10 +84,11 @@ export default {
             label: '架设方式',
             group: '基础信息',
             type: 'select',
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '架空', value: '架空' },
-                { label: '落地', value: '落地' },
-                { label: '其他', value: '其他' }
+                { label: '落地', value: '落地' }
             ],
             exportOrder: 5,
             exportLabel: '架设方式'
@@ -93,11 +98,12 @@ export default {
             label: '安装环境',
             group: '基础信息',
             type: 'select',
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '室内', value: '室内' },
                 { label: '室外', value: '室外' },
-                { label: '地下室', value: '地下室' },
-                { label: '其他', value: '其他' }
+                { label: '地下室', value: '地下室' }
             ],
             exportOrder: 6,
             exportLabel: '安装环境'
@@ -107,12 +113,13 @@ export default {
             label: '设备状态',
             group: '基础信息',
             type: 'select',
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '运行', value: '运行' },
                 { label: '停运', value: '停运' },
                 { label: '现场留置', value: '现场留置' },
-                { label: '新装未送电', value: '新装未送电' },
-                { label: '其他', value: '其他' }
+                { label: '新装未送电', value: '新装未送电' }
             ],
             exportOrder: 7,
             exportLabel: '设备状态'
@@ -122,11 +129,12 @@ export default {
             label: '型号容量来源',
             group: '基础信息',
             type: 'select',
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '变压器铭牌', value: '变压器铭牌' },
                 { label: '名称标识牌', value: '名称标识牌' },
-                { label: '所属站房箱变铭牌', value: '所属站房箱变铭牌' },
-                { label: '其他', value: '其他' }
+                { label: '所属站房箱变铭牌', value: '所属站房箱变铭牌' }
             ],
             exportOrder: 8,
             exportLabel: '型号容量来源'
@@ -136,6 +144,7 @@ export default {
             label: '型号',
             group: '基础信息',
             type: 'select',
+            isCopyable: true,
             allowCustom: true,
             options: transformer_model_options,
             exportOrder: 9,
@@ -146,6 +155,7 @@ export default {
             label: '容量（kVA）',
             group: '基础信息',
             type: 'text',
+            isCopyable: true,
             placeholder: '请输入容量',
             exportOrder: 10,
             exportLabel: '容量（kVA）'
@@ -155,10 +165,11 @@ export default {
             label: '变压器检查情况',
             group: '基础信息',
             type: 'select',
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '全部检查', value: '全部检查' },
-                { label: '部分检查', value: '部分检查' },
-                { label: '其他', value: '其他' }
+                { label: '部分检查', value: '部分检查' }
             ],
             exportOrder: 11,
             exportLabel: '变压器检查情况'
@@ -170,12 +181,13 @@ export default {
             label: '无功补偿安装情况',
             group: '无功补偿信息',
             type: 'select',
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '已安装', value: '已安装' },
                 { label: '未安装', value: '未安装' },
                 { label: '未找到', value: '未找到' },
-                { label: '打不开', value: '打不开' },
-                { label: '其他', value: '其他' }
+                { label: '打不开', value: '打不开' }
             ],
             exportOrder: 12,
             exportLabel: '无功补偿安装情况'
@@ -185,11 +197,12 @@ export default {
             label: '无功补偿投入情况',
             group: '无功补偿信息',
             type: 'select',
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '已投入', value: '已投入' },
                 { label: '未投入', value: '未投入' },
-                { label: '部分投入', value: '部分投入' },
-                { label: '其他', value: '其他' }
+                { label: '部分投入', value: '部分投入' }
             ],
             exportOrder: 13,
             exportLabel: '无功补偿投入情况'
@@ -199,6 +212,7 @@ export default {
             label: '是否存在主备变',
             group: '无功补偿信息',
             type: 'select',
+            isCopyable: true,
             options: [
                 { label: '是', value: '是' },
                 { label: '否', value: '否' }
@@ -213,13 +227,14 @@ export default {
             label: '主备变状态（运行方式）',
             group: '主备变信息',
             type: 'select',
+            isCopyable: true,
             visibleWhen: { key: 'has_backup_transformer', value: '是' },
             options: [
+                { label: '其他', value: '其他' },
                 { label: '分段运行', value: '分段运行' },
                 { label: '联络运行', value: '联络运行' },
                 { label: '低压分段运行', value: '低压分段运行' },
-                { label: '低压联络运行', value: '低压联络运行' },
-                { label: '其他', value: '其他' }
+                { label: '低压联络运行', value: '低压联络运行' }
             ],
             exportOrder: 15,
             exportLabel: '主备变状态（运行方式）'
@@ -229,11 +244,12 @@ export default {
             label: '主备变状态（运行状态）',
             group: '主备变信息',
             type: 'select',
+            isCopyable: true,
             visibleWhen: { key: 'has_backup_transformer', value: '是' },
             options: [
+                { label: '其他', value: '其他' },
                 { label: '运行', value: '运行' },
-                { label: '停运', value: '停运' },
-                { label: '其他', value: '其他' }
+                { label: '停运', value: '停运' }
             ],
             exportOrder: 16,
             exportLabel: '主备变状态（运行状态）'
@@ -243,6 +259,7 @@ export default {
             label: '主备变名称',
             group: '主备变信息',
             type: 'text',
+            isCopyable: true,
             visibleWhen: { key: 'has_backup_transformer', value: '是' },
             placeholder: '请输入主备变名称',
             exportOrder: 17,
@@ -253,6 +270,7 @@ export default {
             label: '主备变型号',
             group: '主备变信息',
             type: 'select',
+            isCopyable: true,
             allowCustom: true,
             visibleWhen: { key: 'has_backup_transformer', value: '是' },
             options: transformer_model_options,
@@ -264,6 +282,7 @@ export default {
             label: '主备变容量（kVA）',
             group: '主备变信息',
             type: 'text',
+            isCopyable: true,
             visibleWhen: { key: 'has_backup_transformer', value: '是' },
             placeholder: '请输入主备变容量',
             exportOrder: 19,
@@ -274,6 +293,7 @@ export default {
             label: '主备变电源线路',
             group: '主备变信息',
             type: 'text',
+            isCopyable: true,
             visibleWhen: { key: 'has_backup_transformer', value: '是' },
             placeholder: '请输入主备变电源线路',
             exportOrder: 20,

@@ -26,13 +26,14 @@ export default {
     },
     {
       key: 'pole_height',
-      label: '杆塔高/m',
+      label: '杆塔高 (m)',
       group: '基础信息',
       type: 'number',
       required: true,
+      isCopyable: true,
       placeholder: '请输入杆塔高度',
       exportOrder: 2,
-      exportLabel: '杆塔高/m'
+      exportLabel: '杆塔高 (m)'
     },
     {
       key: 'pole_material',
@@ -40,6 +41,7 @@ export default {
       group: '基础信息',
       type: 'select',
       required: true,
+      isCopyable: true,
       options: [
         { label: '水泥杆', value: '水泥杆' },
         { label: '钢管杆', value: '钢管杆' },
@@ -57,6 +59,7 @@ export default {
       group: '基础信息',
       type: 'select',
       required: true,
+      isCopyable: true,
       options: [
         { label: '直线', value: '直线' },
         { label: '耐张', value: '耐张' },
@@ -73,6 +76,7 @@ export default {
       label: '导线排列方式',
       group: '导线信息',
       type: 'select',
+      isCopyable: true,
       options: [
         { label: '水平', value: '水平' },
         { label: '三角', value: '三角' },
@@ -86,6 +90,7 @@ export default {
       label: '导线架设方式',
       group: '导线信息',
       type: 'select',
+      isCopyable: true,
       options: [
         { label: '架空', value: '架空' },
         { label: '地埋', value: '地埋' },
@@ -100,14 +105,15 @@ export default {
       label: '导线回路数',
       group: '导线信息',
       type: 'select',
+      isCopyable: true,
       options: [
+        { label: '其他', value: '其他' },
         { label: '单回', value: '单回' },
         { label: '双回', value: '双回' },
         { label: '三回', value: '三回' },
         { label: '四回', value: '四回' },
         { label: '五回', value: '五回' },
-        { label: '六回', value: '六回' },
-        { label: '其他', value: '其他' }
+        { label: '六回', value: '六回' }
       ],
       exportOrder: 7,
       exportLabel: '导线回路数'
@@ -117,7 +123,9 @@ export default {
       label: '导线回路位置',
       group: '导线信息',
       type: 'select',
+      isCopyable: true,
       options: [
+        { label: '其他', value: '其他' },
         { label: '中回', value: '中回' },
         { label: '左回', value: '左回' },
         { label: '右回', value: '右回' },
@@ -126,8 +134,7 @@ export default {
         { label: '左上回', value: '左上回' },
         { label: '左下回', value: '左下回' },
         { label: '右上回', value: '右上回' },
-        { label: '右下回', value: '右下回' },
-        { label: '其他', value: '其他' }
+        { label: '右下回', value: '右下回' }
       ],
       exportOrder: 8,
       exportLabel: '导线回路位置'
@@ -137,6 +144,7 @@ export default {
       label: '导线类型',
       group: '导线信息',
       type: 'select',
+      isCopyable: true,
       options: [
         { label: '绝缘导线', value: '绝缘导线' },
         { label: '裸导线', value: '裸导线' },
@@ -152,6 +160,7 @@ export default {
       type: 'cascading-select',
       dependsOn: 'wire_type',
       allowCustom: true,
+      isCopyable: true,
       optionsMap: {
         '绝缘导线': [
           { label: 'JKLGYJ-10  铝', value: 'JKLGYJ-10  铝' },
@@ -313,10 +322,10 @@ export default {
       group: '附属设备与其他',
       type: 'checkbox',
       options: [
+        { label: '其他', value: '其他' },
         { label: '故障指示器', value: '故障指示器' },
         { label: '接地环', value: '接地环' },
-        { label: '柱上避雷器', value: '柱上避雷器' },
-        { label: '其他', value: '其他' }
+        { label: '柱上避雷器', value: '柱上避雷器' }
       ],
       exportOrder: 11,
       exportLabel: '柱上附属设备'
@@ -343,14 +352,14 @@ export default {
     },
     {
       key: 'span_length',
-      label: '档距/m',
+      label: '档距 (m)',
       group: '附属设备与其他',
       type: 'auto-calc',
       calcType: 'distance_from_prev',
       decimal: 2,
       editable: false,
       exportOrder: 14,
-      exportLabel: '档距/m'
+      exportLabel: '档距 (m)'
     },
     {
       key: 'longitude',

@@ -28,12 +28,13 @@ export default {
             group: '基础信息',
             type: 'select',
             required: true,
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '开闭所', value: '开闭所' },
                 { label: '配电室房', value: '配电室房' },
                 { label: '环网柜', value: '环网柜' },
-                { label: '电缆分支箱', value: '电缆分支箱' },
-                { label: '其他', value: '其他' }
+                { label: '电缆分支箱', value: '电缆分支箱' }
             ],
             exportOrder: 2,
             exportLabel: '站房类型'
@@ -43,11 +44,12 @@ export default {
             label: '安装环境',
             group: '基础信息',
             type: 'select',
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '室内', value: '室内' },
                 { label: '室外', value: '室外' },
-                { label: '地下室', value: '地下室' },
-                { label: '其他', value: '其他' }
+                { label: '地下室', value: '地下室' }
             ],
             exportOrder: 3,
             exportLabel: '安装环境'
@@ -57,12 +59,13 @@ export default {
             label: '开关柜布置方式',
             group: '基础信息',
             type: 'select',
+            isCopyable: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '单列', value: '单列' },
                 { label: '双列面对面', value: '双列面对面' },
                 { label: '双列背对背', value: '双列背对背' },
-                { label: 'L型', value: 'L型' },
-                { label: '其他', value: '其他' }
+                { label: 'L型', value: 'L型' }
             ],
             exportOrder: 4,
             exportLabel: '开关柜布置方式'

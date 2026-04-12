@@ -228,7 +228,7 @@ export default {
             group: '主备变信息',
             type: 'select',
             isCopyable: true,
-            visibleWhen: { key: 'has_backup_transformer', value: '是' },
+            visibleWhen: { has_backup_transformer: '是' },
             options: [
                 { label: '其他', value: '其他' },
                 { label: '分段运行', value: '分段运行' },
@@ -245,7 +245,7 @@ export default {
             group: '主备变信息',
             type: 'select',
             isCopyable: true,
-            visibleWhen: { key: 'has_backup_transformer', value: '是' },
+            visibleWhen: { has_backup_transformer: '是' },
             options: [
                 { label: '其他', value: '其他' },
                 { label: '运行', value: '运行' },
@@ -260,7 +260,7 @@ export default {
             group: '主备变信息',
             type: 'text',
             isCopyable: true,
-            visibleWhen: { key: 'has_backup_transformer', value: '是' },
+            visibleWhen: { has_backup_transformer: '是' },
             placeholder: '请输入主备变名称',
             exportOrder: 17,
             exportLabel: '主备变名称'
@@ -272,7 +272,7 @@ export default {
             type: 'select',
             isCopyable: true,
             allowCustom: true,
-            visibleWhen: { key: 'has_backup_transformer', value: '是' },
+            visibleWhen: { has_backup_transformer: '是' },
             options: transformer_model_options,
             exportOrder: 18,
             exportLabel: '主备变型号'
@@ -283,7 +283,7 @@ export default {
             group: '主备变信息',
             type: 'text',
             isCopyable: true,
-            visibleWhen: { key: 'has_backup_transformer', value: '是' },
+            visibleWhen: { has_backup_transformer: '是' },
             placeholder: '请输入主备变容量',
             exportOrder: 19,
             exportLabel: '主备变容量（kVA）'
@@ -294,7 +294,7 @@ export default {
             group: '主备变信息',
             type: 'text',
             isCopyable: true,
-            visibleWhen: { key: 'has_backup_transformer', value: '是' },
+            visibleWhen: { has_backup_transformer: '是' },
             placeholder: '请输入主备变电源线路',
             exportOrder: 20,
             exportLabel: '主备变电源线路'

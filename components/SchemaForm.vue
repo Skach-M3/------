@@ -121,7 +121,10 @@
 
             <!-- auto-calc 只读计算字段 -->
             <view v-else-if="field.type === 'auto-calc'" class="auto-calc-box">
-              <text class="auto-calc-value">{{ modelValue[field.key] || '—' }}</text>
+              <text class="auto-calc-value">
+                {{ field.decimal && modelValue[field.key] ? Number(modelValue[field.key]).toFixed(field.decimal) :
+                  (modelValue[field.key] || '—') }}
+              </text>
               <text v-if="field.unit && modelValue[field.key]" class="auto-calc-unit">{{ field.unit }}</text>
             </view>
 
@@ -435,7 +438,7 @@ export default {
       this.onInput(this.searchSelectModal.fieldKey, value);
       this.closeSearchSelect();
     },
-    /* ========== 选项处理（核心修复） ========== */
+    /* ========== 选项处理 ========== */
 
     /**
      * 从单个选项中提取显示文本（label）

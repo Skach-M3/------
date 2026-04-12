@@ -371,8 +371,8 @@ const selectDevice = (device: any) => {
     id: device.id || '',
     name: device.name || '未知设备',
     distance: dist,
-    lng: lng.toFixed(6),
-    lat: lat.toFixed(6),
+    lng: lng.toFixed(8),
+    lat: lat.toFixed(8),
     deviceType: device.device_type || ''
   };
 
@@ -643,8 +643,8 @@ const handleMapMessage = (data: any) => {
       id: device.id || '',
       name: device.name || '未知设备',
       distance: dist,
-      lng: Number(device.lng).toFixed(6),
-      lat: Number(device.lat).toFixed(6),
+      lng: Number(device.lng).toFixed(8),
+      lat: Number(device.lat).toFixed(8),
       deviceType: device.device_type || ''
     };
     showDevicePanel.value = true;

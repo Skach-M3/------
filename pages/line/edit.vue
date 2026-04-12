@@ -63,6 +63,7 @@ import { ref, reactive } from 'vue';
 import { onLoad } from '@dcloudio/uni-app';
 import { lineDAO } from '@/dao/lineDAO';
 import { themeColor } from '@/static/themeColor.js';
+import deviceDAO from '@/dao/deviceDAO';
 
 const isEdit = ref(false);
 const lineId = ref<number | null>(null);
@@ -136,8 +137,13 @@ const handleSave = async () => {
     };
 
     if (isEdit.value) {
-      await lineDAO.update(data);
-      uni.showToast({ title: '修改成功', icon: 'success' });
+      const oldLine = await lineDAO.findById(lineId.value)  // 保存前先拿旧名称
+      await lineDAO.update(data)
+
+      if (oldLine && oldLine.name !== data.name) {          // 名称确实发生了变化才同步
+        await deviceDAO.updateNamePrefixByLine(lineId.value, oldLine.name, data.name)
+      }
+      uni.showToast({ title: '修改成功', icon: 'success' })
     } else {
       await lineDAO.insert(data);
       uni.showToast({ title: '新建成功', icon: 'success' });

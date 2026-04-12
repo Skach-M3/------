@@ -19,7 +19,7 @@
     <!-- 属性表单卡片 -->
     <view class="card">
       <view class="card-header">
-        <text class="card-title">{{ currentSchema.label }}信息</text>
+        <text class="card-title">{{ currentSchema.label }}</text>
         <view v-if="showCopyFromParent" class="copy-btn" @click="handleCopyFromParent">
           <text class="copy-btn-text">复制上级节点信息</text>
         </view>
@@ -320,7 +320,6 @@ export default {
       // 根据设备类型应用不同的命名规则
       switch (this.deviceType) {
         case 'pole':
-        case 'cable_turning_point':
           // 杆塔的命名规则
           if (this.parentName) {
             // 提取第一个"#"后面的内容（或整个 parentName）
@@ -350,11 +349,45 @@ export default {
               suffix = namePart
             }
           }
+          this.attributes = {
+            ...this.attributes,
+            [nameField]: this.lineName + '#' + suffix
+          }
+          break
+        case 'cable_turning_point':
+          // 电缆拐点的命名规则
+          suffix = `C${this.sortOrder}`
+          this.attributes = {
+            ...this.attributes,
+            [nameField]: this.lineName + '#' + suffix
+          }
           break
 
         case 'transformer':
           // 变压器的命名规则
           suffix = `T${this.sortOrder}`
+          this.attributes = {
+            ...this.attributes,
+            [nameField]: this.lineName + '#' + suffix
+          }
+          break
+
+        case 'substation':
+          // 变电站的命名规则
+          suffix = `S${this.sortOrder}`
+          this.attributes = {
+            ...this.attributes,
+            [nameField]: this.lineName + '#' + suffix
+          }
+          break
+
+        case 'meter':
+          // 计量信息的命名规则
+          suffix = `计量信息${this.sortOrder}`
+          this.attributes = {
+            ...this.attributes,
+            [nameField]: this.lineName + '#' + suffix
+          }
           break
 
         default:
@@ -369,10 +402,7 @@ export default {
           }
       }
 
-      this.attributes = {
-        ...this.attributes,
-        [nameField]: this.lineName + '#' + suffix
-      }
+
     },
 
     incrementTrailingNumber(name) {

@@ -275,6 +275,32 @@ const deviceDAO = {
         await dbHelper.execute(
             'DELETE FROM t_device WHERE id = ?', [id]
         )
+    },
+
+    /**
+ * 修改线路名称后，批量更新该线路下所有包含旧线路名前缀的设备名称
+ * 仅处理 name 格式为 "{lineName}#{suffix}" 的设备
+ * @param {string} lineId     线路ID
+ * @param {string} oldLineName 旧线路名称
+ * @param {string} newLineName 新线路名称
+ */
+    async updateNamePrefixByLine(lineId, oldLineName, newLineName) {
+        if (!oldLineName || oldLineName === newLineName) return
+
+        const now = Date.now()
+        const oldPrefix = oldLineName + '#'
+        const newPrefix = newLineName + '#'
+
+        // SUBSTR 精准替换前缀部分，避免 REPLACE() 误改名称中间出现的同名字符串
+        const sql = `UPDATE t_device
+        SET
+            name       = ? || SUBSTR(name, LENGTH(?) + 1),
+            sync_status = 0,
+            updated_at  = ?
+        WHERE line_id = ?
+          AND name LIKE ?`
+
+        await dbHelper.execute(sql, [newPrefix, oldPrefix, now, lineId, oldPrefix + '%'])
     }
 }
 

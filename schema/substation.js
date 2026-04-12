@@ -16,7 +16,7 @@ export default {
         {
             key: 'substation_name',
             label: '变电站名称',
-            type: 'text',
+            type: 'composite-name',
             required: true,
             placeholder: '请输入变电站名称',
             exportOrder: 1,

@@ -16,7 +16,7 @@ export default {
             key: 'station_name',
             label: '站房名称',
             group: '基础信息',
-            type: 'text',
+            type: 'composite-name',
             required: true,
             placeholder: '请输入站房名称',
             exportOrder: 1,

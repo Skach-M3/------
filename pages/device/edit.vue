@@ -20,6 +20,9 @@
     <view class="card">
       <view class="card-header">
         <text class="card-title">{{ currentSchema.label }}信息</text>
+        <view v-if="showCopyFromParent" class="copy-btn" @click="handleCopyFromParent">
+          <text class="copy-btn-text">复制上级节点信息</text>
+        </view>
       </view>
       <schema-form ref="formRef" :schema="currentSchema" v-model="attributes" :lineName="lineName"
         :parentName="parentName" :photos="photos" @take-photo="onTakePhoto" @preview-photo="onPreviewPhoto"
@@ -87,6 +90,10 @@ export default {
       deviceId: '',
       parentId: '',
 
+      // 上级节点缓存（用于复制判断）
+      prevDeviceType: '',
+      prevDeviceAttributes: null,
+
       // 链表 & 排序
       prevId: '',
       sortOrder: 1,
@@ -129,7 +136,15 @@ export default {
     /** 上级节点选择是否显示：当前设备类型允许编辑上级节点 */
     showPreNodeSelect() {
       return this.currentSchema.isPreNodeEditable === true
-    }
+    },
+
+    showCopyFromParent() {
+      return !!(
+        this.prevId &&
+        this.prevDeviceType &&
+        this.prevDeviceType === this.deviceType
+      )
+    },
   },
 
   onLoad(query) {
@@ -519,6 +534,14 @@ export default {
           if (prevDevice) {
             this.prevLongitude = prevDevice.longitude || ''
             this.prevLatitude = prevDevice.latitude || ''
+            // 缓存上级节点类型和属性
+            this.prevDeviceType = prevDevice.device_type || ''
+            const attrs = prevDevice.attributes
+              ? (typeof prevDevice.attributes === 'string'
+                ? JSON.parse(prevDevice.attributes)
+                : prevDevice.attributes)
+              : {}
+            this.prevDeviceAttributes = attrs
             this.calcSpanLength()
           }
         } catch (e) {
@@ -527,17 +550,23 @@ export default {
       } else {
         this.prevLongitude = ''
         this.prevLatitude = ''
+        this.prevDeviceType = ''
+        this.prevDeviceAttributes = null
         this.calcSpanLength()
       }
 
-      // 重新生成设备名称
-      this.generateDeviceName()
+      // 如果是上级节点为同类型，重新生成名字
+      if (this.prevDeviceType === this.currentSchema.deviceType) {
+        this.generateDeviceName()
+      }
     },
 
     /** 加载上级节点显示名称 */
     async loadPreNodeDisplay() {
       if (!this.prevId) {
         this.preNodeDisplay = ''
+        this.prevDeviceType = ''
+        this.prevDeviceAttributes = null
         return
       }
       try {
@@ -545,10 +574,65 @@ export default {
         if (device) {
           this.preNodeDisplay = device.name || '未命名'
           this.parentName = device.name || ''
+          this.prevDeviceType = device.device_type || ''
+          const attrs = device.attributes
+            ? (typeof device.attributes === 'string'
+              ? JSON.parse(device.attributes)
+              : device.attributes)
+            : {}
+          this.prevDeviceAttributes = attrs
         }
       } catch (e) {
         console.error('加载上级节点名称失败:', e)
       }
+    },
+
+    /** 从上级节点复制 isCopyable 字段值 */
+    async handleCopyFromParent() {
+      const copyableKeys = (this.currentSchema.fields || [])
+        .filter(f => f.isCopyable)
+        .map(f => f.key)
+
+      if (copyableKeys.length === 0) {
+        uni.showToast({ title: '没有可复制的字段', icon: 'none' })
+        return
+      }
+
+      // 优先用缓存，缓存失效则重新加载
+      let parentAttrs = this.prevDeviceAttributes
+      if (!parentAttrs) {
+        try {
+          const prevDevice = await deviceDAO.findById(this.prevId)
+          if (!prevDevice) {
+            uni.showToast({ title: '上级节点不存在', icon: 'none' })
+            return
+          }
+          parentAttrs = prevDevice.attributes
+            ? (typeof prevDevice.attributes === 'string'
+              ? JSON.parse(prevDevice.attributes)
+              : prevDevice.attributes)
+            : {}
+          this.prevDeviceAttributes = parentAttrs
+        } catch (e) {
+          uni.showToast({ title: '加载上级节点失败', icon: 'none' })
+          return
+        }
+      }
+
+      const newAttrs = { ...this.attributes }
+
+      copyableKeys.forEach(key => {
+        const val = parentAttrs[key]
+        // 数组字段深拷贝，其余直接赋值（undefined 则写入空字符串）
+        if (Array.isArray(val)) {
+          newAttrs[key] = [...val]
+        } else {
+          newAttrs[key] = val !== undefined ? val : ''
+        }
+      })
+
+      this.attributes = newAttrs
+      uni.showToast({ title: `复制成功`, icon: 'success' })
     },
 
     /* ========== 定位 ========== */
@@ -776,6 +860,19 @@ export default {
   font-size: 32rpx;
   font-weight: bold;
   color: #333;
+}
+
+/* ---- 复制上级节点按钮 ---- */
+.copy-btn {
+  padding: 8rpx 20rpx;
+  background: #eef3ff;
+  border-radius: 8rpx;
+  border: 1rpx solid #2979ff;
+}
+
+.copy-btn-text {
+  font-size: 24rpx;
+  color: #2979ff;
 }
 
 /* ---- 子设备分组 ---- */

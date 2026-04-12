@@ -806,6 +806,7 @@ export default {
 <!-- 3. 视图层 (RenderJS) -->
 <script module="mapModule" lang="renderjs">
 import { getMapSvg } from '@/static/device_svgs.js';
+import { haversineDistance } from '@/utils/common.js';
 export default {
   data() {
     return {
@@ -904,8 +905,15 @@ export default {
         this.drawLocationMarker(config.center);
       }
       else if (config.actionType === 'locate') {
+        // 飞行期间禁止拖拽
+        this.map.dragging.disable();
         this.map.flyTo(config.center, config.zoom);
         this.drawLocationMarker(config.center);
+        // 飞行结束后恢复拖拽
+        var self = this;
+        this.map.once('moveend', function() {
+          self.map.dragging.enable();
+        });
       }
       else if (config.actionType === 'updateLocation') {
         // 仅更新蓝点位置，不移动地图视野
@@ -919,7 +927,14 @@ export default {
       }else if (config.actionType === 'flyTo') {
         // 如果当前缩放太小，自动放大到 16 级；否则保持当前缩放
         var targetZoom = Math.max(this.map.getZoom(), 16);
+        // 飞行期间禁止拖拽
+        this.map.dragging.disable();
         this.map.flyTo(config.center, targetZoom, { duration: 0.5 });
+        // 飞行结束后恢复拖拽
+        var self = this;
+        this.map.once('moveend', function() {
+          self.map.dragging.enable();
+        });
       }
     },
 
@@ -994,6 +1009,7 @@ export default {
       // 重置 marker/polyline 映射
       this.deviceMarkers = {};
       this.devicePolylines = {};
+      this.deviceSpanLabels = {};
 
       if (!devices || devices.length === 0) return;
     
@@ -1094,13 +1110,24 @@ export default {
             });
           });
         })(device.id,displayName, lat, lng, device.device_type);
+
+        // 解析 attributes，供档距标签使用
+        var parsedAttrs = {};
+        if (device.attributes) {
+          if (typeof device.attributes === 'string') {
+            try { parsedAttrs = JSON.parse(device.attributes); } catch(e) {}
+          } else if (typeof device.attributes === 'object') {
+            parsedAttrs = device.attributes;
+          }
+        }
         
         // 构建设备映射表，用于后续连线
         deviceMap[device.id] = {
           id: device.id,
           latlng: latlng,
           prev_id: device.prev_id,
-          parent_id: device.parent_id
+          parent_id: device.parent_id,
+          attributes: parsedAttrs
         };
         
         // 仅顶层设备参与连线
@@ -1140,6 +1167,37 @@ export default {
           this.devicePolylines[currentDevice.id].push(polyline);
           if (!this.devicePolylines[prevDevice.id]) this.devicePolylines[prevDevice.id] = [];
           this.devicePolylines[prevDevice.id].push(polyline);
+          // 档距标签
+          var spanLength = haversineDistance(
+            prevDevice.latlng[0], prevDevice.latlng[1],
+            currentDevice.latlng[0], currentDevice.latlng[1]
+          );
+          var spanInt = Math.round(spanLength);
+          if (spanInt > 0) {
+            var midLat = (prevDevice.latlng[0] + currentDevice.latlng[0]) / 2;
+            var midLng = (prevDevice.latlng[1] + currentDevice.latlng[1]) / 2;
+            var spanHtml = '<div style="transform:translate(-50%,-50%);display:inline-block;">'
+              + '<span style="'
+              +   'white-space:nowrap;color:#fff;'
+              +   'font-size:10px;font-weight:bold;'
+              +   'text-shadow:-1px -1px 0 #333,1px -1px 0 #333,-1px 1px 0 #333,1px 1px 0 #333;'
+              + '">' + spanInt + ' m</span>'
+              + '</div>';
+            var spanIcon = L.divIcon({
+              className: 'device-marker-wrapper',
+              html: spanHtml,
+              iconSize: [0, 0],
+              iconAnchor: [0, 0]
+            });
+            var spanMarker = L.marker([midLat, midLng], { icon: spanIcon, interactive: false })
+            .addTo(this.deviceLayerGroup);
+            
+            // 存储标签引用，关联到两端设备，方便移动时隐藏
+            if (!this.deviceSpanLabels[currentDevice.id]) this.deviceSpanLabels[currentDevice.id] = [];
+            this.deviceSpanLabels[currentDevice.id].push(spanMarker);
+            if (!this.deviceSpanLabels[prevDevice.id]) this.deviceSpanLabels[prevDevice.id] = [];
+            this.deviceSpanLabels[prevDevice.id].push(spanMarker);
+          }
         }
       }
     },
@@ -1194,6 +1252,13 @@ export default {
       if (polylines) {
         for (var i = 0; i < polylines.length; i++) {
           polylines[i].setStyle({ opacity: visible ? 1 : 0 });
+        }
+      }
+
+      var spanLabels = this.deviceSpanLabels && this.deviceSpanLabels[deviceId];
+      if (spanLabels) {
+        for (var i = 0; i < spanLabels.length; i++) {
+          spanLabels[i].setOpacity(visible ? 1 : 0);
         }
       }
     },

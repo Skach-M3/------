@@ -827,9 +827,12 @@ export default {
       uni.showModal({
         title: '删除确认',
         content: `确定删除「${item.name || label}」吗？此操作不可恢复。`,
-        confirmColor: '#e64340',
+        confirmText: '取消',
+        cancelText: '确定',
+        confirmColor: '#999999',
+        cancelColor: '#e64340',
         success: async (res) => {
-          if (res.confirm) {
+          if (res.cancel) {
             try {
               await deviceDAO.deleteWithChildren(item.id)
               await this.loadChildDevices()

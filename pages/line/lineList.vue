@@ -115,8 +115,11 @@ const handleDelete = (item: any) => {
   uni.showModal({
     title: '确认删除',
     content: `确定删除线路「${item.name}」吗？`,
+    confirmText: '取消',
+    cancelText: '确定',
     success: async (res) => {
-      if (res.confirm) {
+      if (res.cancel) {
+        // 点的是左边的"删除"
         try {
           await lineDAO.deleteById(item.id);
           uni.showToast({ title: '已删除', icon: 'success' });

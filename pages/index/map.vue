@@ -427,35 +427,71 @@ const handleNavigate = () => {
 
   // #ifdef APP-PLUS
   const platform = uni.getSystemInfoSync().platform;
-  let url = '';
 
-  if (platform === 'android') {
-    // t=2 表示步行导航，dev=1 表示传入 WGS84 坐标
-    url = `androidamap://route/plan/?sourceApplication=lineCollect&dlat=${lat}&dlon=${lng}&dname=${name}&dev=1&t=2`;
-  } else {
-    url = `iosamap://path?sourceApplication=lineCollect&dlat=${lat}&dlon=${lng}&dname=${name}&dev=1&t=2`;
-  }
+  // 构建三种地图的 URL
+  const mapList = [
+    {
+      name: '高德地图',
+      url: platform === 'android'
+        ? `androidamap://route/plan/?sourceApplication=lineCollect&dlat=${lat}&dlon=${lng}&dname=${name}&dev=1&t=2`
+        : `iosamap://path?sourceApplication=lineCollect&dlat=${lat}&dlon=${lng}&dname=${name}&dev=1&t=2`,
+      downloadUrl: platform === 'android'
+        ? 'https://mobile.amap.com/'
+        : 'https://apps.apple.com/cn/app/id461703208'
+    },
+    {
+      name: '百度地图',
+      url: `baidumap://map/direction?destination=latlng:${lat},${lng}|name:${name}&coord_type=wgs84&mode=walking&src=lineCollect`,
+      downloadUrl: platform === 'android'
+        ? 'https://map.baidu.com/zt/client/index/'
+        : 'https://apps.apple.com/cn/app/id452186370'
+    },
+    {
+      name: '腾讯地图',
+      url: `qqmap://map/routeplan?type=walk&to=${name}&tocoord=${lat},${lng}&coord_type=1&referer=lineCollect`,
+      downloadUrl: platform === 'android'
+        ? 'https://map.qq.com/mobile/index.html'
+        : 'https://apps.apple.com/cn/app/id481623196'
+    }
+  ];
 
-  plus.runtime.openURL(url, function (err) {
-    uni.showModal({
-      title: '提示',
-      content: '未检测到高德地图，是否前往下载？',
-      success: (res) => {
-        if (res.confirm) {
-          if (platform === 'android') {
-            plus.runtime.openURL('https://mobile.amap.com/');
-          } else {
-            plus.runtime.openURL('https://apps.apple.com/cn/app/id461703208');
+  uni.showActionSheet({
+    itemList: mapList.map(m => m.name),
+    success: (res) => {
+      const selected = mapList[res.tapIndex];
+      plus.runtime.openURL(selected.url, function () {
+        uni.showModal({
+          title: '提示',
+          content: `未检测到${selected.name}，是否前往下载？`,
+          confirmText: '取消',
+          cancelText: '去下载',
+          confirmColor: '#999999',
+          cancelColor: '#007aff',
+          success: (modalRes) => {
+            if (modalRes.cancel) {
+              // 点的是左边的"去下载"
+              plus.runtime.openURL(selected.downloadUrl);
+            }
           }
-        }
-      }
-    });
+        });
+      });
+    }
   });
   // #endif
 
   // #ifdef H5
-  const webUrl = `https://uri.amap.com/navigation?to=${lng},${lat},${name}&mode=walk&coordinate=wgs84`;
-  window.open(webUrl);
+  const h5MapList = [
+    { name: '高德地图', url: `https://uri.amap.com/navigation?to=${lng},${lat},${name}&mode=walk&coordinate=wgs84` },
+    { name: '百度地图', url: `https://api.map.baidu.com/direction?destination=latlng:${lat},${lng}|name:${name}&coord_type=wgs84&mode=walking&output=html&src=lineCollect` },
+    { name: '腾讯地图', url: `https://apis.map.qq.com/uri/v1/routeplan?type=walk&to=${name}&tocoord=${lat},${lng}&coord_type=1&referer=lineCollect` }
+  ];
+
+  uni.showActionSheet({
+    itemList: h5MapList.map(m => m.name),
+    success: (res) => {
+      window.open(h5MapList[res.tapIndex].url);
+    }
+  });
   // #endif
 };
 

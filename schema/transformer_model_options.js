@@ -1,4 +1,5 @@
 export default [
+    { label: '其他', value: '其他' },
     { label: 'D10-10 10kVA', value: 'D10-10 10kVA' },
     { label: 'D13-10 10kVA', value: 'D13-10 10kVA' },
     { label: 'JB1300-73-10 10kVA', value: 'JB1300-73-10 10kVA' },

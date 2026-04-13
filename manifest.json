@@ -21,7 +21,8 @@
             "Camera" : {},
             "SQLite" : {},
             "Geolocation" : {},
-            "Maps" : {}
+            "Maps" : {},
+            "Barcode" : {}
         },
         /* 应用发布信息 */
         "distribute" : {

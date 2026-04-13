@@ -943,7 +943,7 @@ export default {
       else if (config.actionType === 'locate') {
         // 飞行期间禁止拖拽
         this.map.dragging.disable();
-        this.map.flyTo(config.center, config.zoom);
+        this.map.flyTo(config.center, config.zoom, { duration: 0.3 });
         this.drawLocationMarker(config.center);
         // 飞行结束后恢复拖拽
         var self = this;
@@ -965,7 +965,7 @@ export default {
         var targetZoom = Math.max(this.map.getZoom(), 16);
         // 飞行期间禁止拖拽
         this.map.dragging.disable();
-        this.map.flyTo(config.center, targetZoom, { duration: 0.5 });
+        this.map.flyTo(config.center, targetZoom, { duration: 0.3 });
         // 飞行结束后恢复拖拽
         var self = this;
         this.map.once('moveend', function() {

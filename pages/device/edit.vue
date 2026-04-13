@@ -760,6 +760,7 @@ export default {
         if (this.deviceId) {
           await deviceDAO.update(this.deviceId, deviceData)
           uni.showToast({ title: '保存成功', icon: 'success' })
+          setTimeout(() => { uni.navigateBack() }, 500)
         } else {
           const newId = await deviceDAO.insert(deviceData)
           this.deviceId = newId
@@ -773,9 +774,8 @@ export default {
             })
             this.loadChildDevices()
             // 不 navigateBack，让用户继续添加子设备
-          } else {
-            setTimeout(() => { uni.navigateBack() }, 800)
           }
+          setTimeout(() => { uni.navigateBack() }, 500)
         }
       } catch (e) {
         console.error('保存失败:', e)

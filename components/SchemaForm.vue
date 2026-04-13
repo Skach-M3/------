@@ -23,6 +23,17 @@
               :placeholder="field.placeholder || ('请输入' + field.label)"
               @input="onInput(field.key, $event.detail.value)" />
 
+            <!-- text-scan 文本，可手动输入或扫描 -->
+            <view v-else-if="field.type === 'text-scan'" class="scan-input-wrapper">
+              <input class="scan-input" :value="modelValue[field.key]"
+                :placeholder="field.placeholder || ('输入或扫码' + field.label)"
+                @input="onInput(field.key, $event.detail.value)" />
+              <view class="scan-btn" @click="onScanCode(field)">
+                <image :src="scanIconSvg" class="scan-icon" mode="aspectFit" />
+              </view>
+            </view>
+
+
             <!-- composite-name 复合名称字段 -->
             <view v-else-if="field.type === 'composite-name'" class="composite-name-wrapper">
               <textarea class="composite-name-prefix" :value="compositePrefix" disabled auto-height />
@@ -329,7 +340,8 @@ export default {
         label: ''
       },
       // 相机图标 base64 SVG
-      cameraIconSvg: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z'/%3E%3Ccircle cx='12' cy='13' r='4'/%3E%3C/svg%3E"
+      cameraIconSvg: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z'/%3E%3Ccircle cx='12' cy='13' r='4'/%3E%3C/svg%3E",
+      scanIconSvg: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232979ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7V5a2 2 0 0 1 2-2h2'/%3E%3Cpath d='M17 3h2a2 2 0 0 1 2 2v2'/%3E%3Cpath d='M21 17v2a2 2 0 0 1-2 2h-2'/%3E%3Cpath d='M7 21H5a2 2 0 0 1-2-2v-2'/%3E%3Cline x1='3' y1='12' x2='21' y2='12'/%3E%3C/svg%3E"
     };
   },
 
@@ -412,6 +424,19 @@ export default {
   },
 
   methods: {
+    onScanCode(field) {
+      const scanType = field.scanType ? [field.scanType] : ['barCode']
+      uni.scanCode({
+        scanType,
+        success: (res) => {
+          this.onInput(field.key, res.result)
+        },
+        fail: (err) => {
+          if (err.errMsg && err.errMsg.includes('cancel')) return
+          uni.showToast({ title: '扫码失败', icon: 'none' })
+        }
+      })
+    },
     /* ========== 搜索下拉弹窗逻辑 ========== */
     openSearchSelect(field, options) {
       this.searchSelectModal = {
@@ -1376,5 +1401,45 @@ export default {
   text-align: center;
   font-size: 28rpx;
   color: #999;
+}
+
+/* ---- 扫码输入框 ---- */
+.scan-input-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 72rpx;
+  border: 1rpx solid #dcdfe6;
+  border-radius: 8rpx;
+  background: #fff;
+  overflow: hidden;
+}
+
+.scan-input {
+  flex: 1;
+  height: 100%;
+  padding: 0 20rpx;
+  font-size: 28rpx;
+  color: #333;
+  background: transparent;
+}
+
+.scan-btn {
+  width: 80rpx;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-left: 1rpx solid #dcdfe6;
+  background: #f5f7fa;
+}
+
+.scan-btn:active {
+  background: #e8eef8;
+}
+
+.scan-icon {
+  width: 40rpx;
+  height: 40rpx;
 }
 </style>

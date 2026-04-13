@@ -383,11 +383,10 @@ export default {
           break
 
         case 'meter':
-          // 计量信息的命名规则
-          suffix = `计量信息${this.sortOrder}`
+          // 计量信息的命名规则，不命名，只用电表资产号
           this.attributes = {
             ...this.attributes,
-            [nameField]: this.lineName + '#' + suffix
+            [nameField]: ''
           }
           break
 

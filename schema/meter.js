@@ -4,7 +4,7 @@ export default {
     label: '计量信息',
     icon: '/static/icons/meter.png',
     category: '10kV',
-    nameField: 'meter_asset_name',
+    nameField: 'meter_asset_no',
     children: [],
     isAvailablePreNode: true,
     isPreNodeEditable: true,
@@ -12,6 +12,18 @@ export default {
 
     fields: [
         // ===== 电表检查信息 =====
+        {
+            key: 'meter_asset_no',
+            label: '电表资产号',
+            group: '电表检查信息',
+            type: 'text-scan',
+            required: true,
+            isCopyable: true,
+            placeholder: '输入或扫码获取电表资产号',
+            scanType: 'barCode',
+            exportOrder: 1,
+            exportLabel: '电表资产号'
+        },
         {
             key: 'metering_method',
             label: '计量方式',
@@ -23,7 +35,7 @@ export default {
                 { label: '高供高计', value: '高供高计' },
                 { label: '高供低计', value: '高供低计' }
             ],
-            exportOrder: 1,
+            exportOrder: 2,
             exportLabel: '计量方式'
         },
         {
@@ -39,7 +51,7 @@ export default {
                 { label: '无盖', value: '无盖' },
                 { label: '无封锁', value: '无封锁' }
             ],
-            exportOrder: 2,
+            exportOrder: 3,
             exportLabel: '箱柜加封锁'
         },
         {
@@ -55,20 +67,10 @@ export default {
                 { label: '无盖', value: '无盖' },
                 { label: '无封锁', value: '无封锁' }
             ],
-            exportOrder: 3,
+            exportOrder: 4,
             exportLabel: '电表加封锁'
         },
-        {
-            key: 'meter_asset_no',
-            label: '电表资产号',
-            group: '电表检查信息',
-            type: 'text-scan',
-            isCopyable: true,
-            placeholder: '输入或扫码获取电表资产号',
-            scanType: 'barCode',
-            exportOrder: 4,
-            exportLabel: '电表资产号'
-        },
+
         {
             key: 'meter_install_location',
             label: '电表安装位置',

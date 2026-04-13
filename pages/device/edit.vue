@@ -270,7 +270,8 @@ export default {
           this.sortOrder = (lastDevice.sort_order || 0) + 1
           this.prevLongitude = lastDevice.longitude || ''
           this.prevLatitude = lastDevice.latitude || ''
-          if (lastDevice.name) {
+          // 仅在没有从路由接收 parentName 时，才用上一条记录的名字
+          if (lastDevice.name && !this.parentName) {
             this.parentName = lastDevice.name
           }
         } else {
@@ -604,7 +605,9 @@ export default {
         const device = await deviceDAO.findById(this.prevId)
         if (device) {
           this.preNodeDisplay = device.name || '未命名'
-          this.parentName = device.name || ''
+          if (!this.parentName) {
+            this.parentName = device.name || ''
+          }
           this.prevDeviceType = device.device_type || ''
           const attrs = device.attributes
             ? (typeof device.attributes === 'string'

@@ -1284,19 +1284,21 @@ export default {
         }
       }
 
-      var polylines = this.devicePolylines[deviceId];
-      if (polylines) {
-        for (var i = 0; i < polylines.length; i++) {
-          polylines[i].setStyle({ opacity: visible ? 1 : 0 });
-        }
-      }
+      // 连线和距离标签不隐藏
 
-      var spanLabels = this.deviceSpanLabels && this.deviceSpanLabels[deviceId];
-      if (spanLabels) {
-        for (var i = 0; i < spanLabels.length; i++) {
-          spanLabels[i].setOpacity(visible ? 1 : 0);
-        }
-      }
+      // var polylines = this.devicePolylines[deviceId];
+      // if (polylines) {
+      //   for (var i = 0; i < polylines.length; i++) {
+      //     polylines[i].setStyle({ opacity: visible ? 1 : 0 });
+      //   }
+      // }
+
+      // var spanLabels = this.deviceSpanLabels && this.deviceSpanLabels[deviceId];
+      // if (spanLabels) {
+      //   for (var i = 0; i < spanLabels.length; i++) {
+      //     spanLabels[i].setOpacity(visible ? 1 : 0);
+      //   }
+      // }
     },
     
     /**

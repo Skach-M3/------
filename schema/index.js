@@ -12,7 +12,7 @@ import transformSchema from './transformer.js'
 import meterSchema from './meter.js'
 import stationSchema from './station.js'
 import stationSwitchgearSchema from './stationSwitchgear.js'
-import subStationSchema from './subStation.js'
+import subStationSchema from './substation.js'
 
 const schemas = {
     pole: poleSchema,

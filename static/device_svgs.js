@@ -8,6 +8,7 @@
 
 // -------- 地图 Marker 内嵌 SVG（HTML 字符串） --------
 export const MAP_SVGS = {
+    // 杆塔
     pole:
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 162 148" width="16" height="16">'
         + '<path fill="#fff" d="'
@@ -27,68 +28,76 @@ export const MAP_SVGS = {
         + 'C60.6,41.3,71.1,53.3,81.9,65.8C84.5,62.7,86.5,60.4,89,57.5z" />'
         + '</svg>',
 
+    // 变压器
     transformer:
-        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
-        + '<circle cx="9" cy="12" r="5" stroke="#fff" stroke-width="1.5" />'
-        + '<circle cx="15" cy="12" r="5" stroke="#fff" stroke-width="1.5" />'
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" width="16" height="16" fill="none">'
+        + '<circle cx="70" cy="50" r="40" stroke="#fff" stroke-width="15" fill="none"/>'
+        + '<circle cx="130" cy="50" r="40" stroke="#fff" stroke-width="15" fill="none"/>'
+        + '<rect x="00" y="42.5" width="30" height="15" rx="7.5" fill="#fff"/>'
+        + '<rect x="170" y="42.5" width="30" height="15" rx="7.5" fill="#fff"/>'
         + '</svg>',
 
+    // 变电站
     substation:
-        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
-        + '<rect x="4" y="9" width="16" height="11" rx="1" stroke="#fff" stroke-width="1.5" />'
-        + '<path d="M4 9l8-5 8 5" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />'
-        + '<path d="M13 12l-2 3.5h3l-2 3.5" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />'
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="16" height="16" fill="none">'
+        + '<circle cx="50" cy="50" r="45" stroke="#fff" stroke-width="8" fill="none"/>'
+        + '<circle cx="50" cy="50" r="30" stroke="#fff" stroke-width="8" fill="none"/>'
+        + '<circle cx="50" cy="50" r="15" fill="#fff"/>'
         + '</svg>',
 
+    // 电缆拐点
     cable_turning_point:
-        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
-        + '<circle cx="12" cy="12" r="3" fill="#fff" />'
-        + '<path d="M4 12h5M15 12h5M12 4v5M12 15v5" stroke="#fff" stroke-width="1.5" stroke-linecap="round" />'
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 407 387" width="16" height="16">'
+        + '<path fill="#fff" d="M235.7,97.3C242.6,109.2,249.2'
+        + '120.7,255.8,132.3C264.2,146.9,272.6,161.6,281,176.2C291.3,193.9,301.6,211.6,311.8,229.3C320.2,243.9'
+        + '328.6,258.6,337,273.2C347.3,290.9,357.6,308.6,367.8,326.3C373.2,335.6,378.5,344.8,384.1,354.5C261.7'
+        + '354.5,139.6,354.5,16.9,354.5C78,248.7,139,143,200.5,36.5C212.3,57,223.9,77,235.7,97.3Z"/>'
         + '</svg>',
 
+    // 计量信息
     meter:
-        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
-        + '<circle cx="12" cy="13" r="8" stroke="#fff" stroke-width="1.5" />'
-        + '<path d="M12 13l4-4" stroke="#fff" stroke-width="2" stroke-linecap="round" />'
-        + '<circle cx="12" cy="13" r="1.5" fill="#fff" />'
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="16" height="16">'
+        + '<rect x="10" y="10" width="180" height="180" fill="#fff"/>'
+        + '<rect x="30" y="30" width="140" height="140" fill="#3bbffb"/>'
+        + '<text x="100" y="130" font-family="Times New Roman, serif" font-size="110" font-weight="bold" fill="#fff" text-anchor="middle">JL</text>'
         + '</svg>',
 
+    // 站房
     station:
-        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none">'
-        + '<path d="M3 12l9-7 9 7" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />'
-        + '<rect x="5" y="12" width="14" height="8" stroke="#fff" stroke-width="1.5" />'
-        + '<rect x="9" y="15" width="6" height="5" stroke="#fff" stroke-width="1.5" />'
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="16" height="16">'
+        + '<rect x="10" y="10" width="180" height="180" fill="#fff"/>'
+        + '<rect x="30" y="30" width="140" height="140" fill="#3bbffb"/>'
+        + '<text x="100" y="135" font-family="Times New Roman, serif" font-size="110" font-weight="bold" fill="#fff" text-anchor="middle">ZF</text>'
+        + '</svg>',
+
+    // 问题设备
+    question:
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="16" height="16">'
+        + '<polygon points="50,10 92,85 8,85" fill="#f9e51c" stroke="#f9e51c" stroke-width="10" stroke-linejoin="round"/>'
+        + '<polygon points="50,10 92,85 8,85" fill="none" stroke="#1C1917" stroke-width="9" stroke-linejoin="round" style="transform: scale(0.88); transform-origin: 50px 60px;"/>'
+        + '<g style="transform: translate(0px, 5px) scale(0.86); transform-origin: 50px 50px;" fill="#1C1917">'
+        + '<path d="M 45 32 A 5 5 0 0 1 55 32 L 53 59 A 3 3 0 0 1 47 59 Z"/>'
+        + '<circle cx="50" cy="68" r="4.5"/>'
+        + '</g>'
         + '</svg>'
 };
 
 // -------- 移动模式 Pin SVG（用于 data URI，viewBox 16x16） --------
 // 部分图标和 MAP_SVGS 一致，单独列出是为了可以独立定制尺寸/颜色
 export const PIN_SVGS = {
-    substation:
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
-        + '<path d="M9.5 1L4 9h4l-1 6 5.5-8H8.5z" fill="white"/></svg>',
+    substation: MAP_SVGS.substation,
 
     pole: MAP_SVGS.pole, // 复用
 
-    cable_turning_point:
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
-        + '<circle cx="8" cy="8" r="2" fill="white"/>'
-        + '<path d="M2 8h4M10 8h4M8 2v4M8 10v4" stroke="white" stroke-width="1.2" stroke-linecap="round"/></svg>',
+    cable_turning_point: MAP_SVGS.cable_turning_point,
 
-    transformer:
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
-        + '<circle cx="6.5" cy="8" r="3" stroke="white" stroke-width="1.2" fill="none"/>'
-        + '<circle cx="9.5" cy="8" r="3" stroke="white" stroke-width="1.2" fill="none"/></svg>',
+    transformer: MAP_SVGS.transformer,
 
-    meter:
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
-        + '<circle cx="8" cy="8" r="5" stroke="white" stroke-width="1.2" fill="none"/>'
-        + '<path d="M8 5v3l2 2" stroke="white" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    meter: MAP_SVGS.meter,
 
-    station:
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
-        + '<path d="M3 14V7l5-4 5 4v7H3z" stroke="white" stroke-width="1.2" fill="none" stroke-linejoin="round"/>'
-        + '<path d="M7 14v-4h2v4" stroke="white" stroke-width="1" fill="none"/></svg>'
+    station: MAP_SVGS.station,
+
+    question: MAP_SVGS.question,
 };
 
 // 默认兜底图标

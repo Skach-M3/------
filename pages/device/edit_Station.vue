@@ -200,6 +200,41 @@
                                                     :maxlength="field.maxLength || 500"
                                                     @input="updateSelectedSwitchgearField(field.key, $event.detail.value)" />
                                             </view>
+
+                                            <!-- 开关柜照片区域 -->
+                                            <view v-if="showSelectedSwitchgearPhotoSection" class="photo-section">
+                                                <view class="section-header">
+                                                    <text class="section-title">开关柜照片</text>
+                                                </view>
+
+                                                <view class="photo-grid">
+                                                    <view v-for="slot in selectedSwitchgearAllPhotoSlots"
+                                                        :key="slot.key" class="photo-grid-item">
+                                                        <view
+                                                            :class="['photo-slot', selectedSwitchgearPhotos[slot.key] ? 'photo-slot-taken' : '']"
+                                                            @click="onSwitchgearSlotTap(slot)">
+                                                            <template v-if="selectedSwitchgearPhotos[slot.key]">
+                                                                <image :src="selectedSwitchgearPhotos[slot.key]"
+                                                                    mode="aspectFill" class="photo-thumb" />
+                                                                <view class="photo-taken-badge">✓</view>
+                                                            </template>
+                                                            <view v-else class="photo-placeholder">
+                                                                <image :src="cameraIconSvg" class="camera-icon-svg"
+                                                                    mode="aspectFit" />
+                                                            </view>
+                                                        </view>
+                                                        <text class="photo-label">{{ slot.label }}</text>
+                                                    </view>
+
+                                                    <view v-if="selectedSwitchgearAllowExtraSlot"
+                                                        class="photo-grid-item">
+                                                        <view class="photo-slot add-slot"
+                                                            @click="onSwitchgearAddSlotTap">
+                                                            <text class="add-icon">+</text>
+                                                        </view>
+                                                    </view>
+                                                </view>
+                                            </view>
                                         </view>
                                     </view>
                                 </view>
@@ -375,7 +410,8 @@ export default {
             },
             addSlotModal: {
                 visible: false,
-                label: ''
+                label: '',
+                target: 'station' // station | switchgear
             },
 
             busbarLabels: ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ'],
@@ -469,6 +505,27 @@ export default {
         },
         canCreateSwitchgear() {
             return !!this.stationId
+        },
+
+        switchgearBasePhotoSlots() {
+            return Array.isArray(this.switchgearSchema?.photoSlots) ? this.switchgearSchema.photoSlots : []
+        },
+        selectedSwitchgearPhotos() {
+            const row = this.selectedSwitchgearData
+            return row?._photos || {}
+        },
+        selectedSwitchgearExtraPhotoSlots() {
+            const row = this.selectedSwitchgearData
+            return Array.isArray(row?._extraPhotoSlots) ? row._extraPhotoSlots : []
+        },
+        selectedSwitchgearAllPhotoSlots() {
+            return [...this.switchgearBasePhotoSlots, ...this.selectedSwitchgearExtraPhotoSlots]
+        },
+        showSelectedSwitchgearPhotoSection() {
+            return !!this.selectedSwitchgearData && this.switchgearBasePhotoSlots.length > 0
+        },
+        selectedSwitchgearAllowExtraSlot() {
+            return !!this.switchgearSchema?.extraPhotoSlot
         },
     },
 
@@ -600,7 +657,9 @@ export default {
                         remark_2: attrs.remark_2 || '',
                         region_label: attrs.region_label || '',
                         region_key: attrs.region_key || '',
-                        sort_index: attrs.sort_index || 0
+                        sort_index: attrs.sort_index || 0,
+                        _photos: attrs._photos || {},
+                        _extraPhotoSlots: attrs._extraPhotoSlots || []
                     }
 
                     // 填到指定位置，允许稀疏
@@ -667,7 +726,9 @@ export default {
                         remark_2: row.remark_2 || '',
                         region_label: row.region_label || `${this.busbarLabels[segIndex] || ''}段`,
                         region_key: row.region_key || `seg_${segIndex + 1}`,
-                        sort_index: rowIndex + 1
+                        sort_index: rowIndex + 1,
+                        _photos: row._photos || {},
+                        _extraPhotoSlots: row._extraPhotoSlots || []
                     }
 
                     const name = attrs.cabinet_name || cabinetNumber || '开关柜'
@@ -1076,7 +1137,9 @@ export default {
                         localId: base.localId || `${Date.now()}_${colIndex}_${idx}_${Math.random().toString(36).slice(2, 8)}`,
                         // 兼容旧数据：name 与 cabinet_name 互补
                         name: base.name || base.cabinet_name || '',
-                        cabinet_name: base.cabinet_name || base.name || ''
+                        cabinet_name: base.cabinet_name || base.name || '',
+                        _photos: (base._photos && typeof base._photos === 'object') ? base._photos : {},
+                        _extraPhotoSlots: Array.isArray(base._extraPhotoSlots) ? base._extraPhotoSlots : []
                     }
                 })
             })
@@ -1093,7 +1156,9 @@ export default {
                 cabinet_type: '',
                 switch_status: '',
                 remark_1: '',
-                remark_2: ''
+                remark_2: '',
+                _photos: {},
+                _extraPhotoSlots: []
             }
         },
 
@@ -1142,18 +1207,7 @@ export default {
             if (col.length < targetCount) {
                 const addLen = targetCount - col.length
                 for (let i = 0; i < addLen; i += 1) {
-                    col.push({
-                        deviceId: '',
-                        localId: `${Date.now()}_${Math.random()}_${segIndex}_${col.length + 1}`,
-                        name: '',
-                        cabinet_name: '',
-                        belong_station: '',
-                        cabinet_number: '',
-                        cabinet_type: '',
-                        switch_status: '',
-                        remark_1: '',
-                        remark_2: ''
-                    })
+                    col.push(this.createSwitchgearItem(segIndex, col.length))
                 }
             } else if (col.length > targetCount) {
                 col = col.slice(0, targetCount)
@@ -1299,7 +1353,7 @@ export default {
         },
 
         /* ========== 照片处理 ========== */
-        async onTakePhoto({ key }) {
+        async onTakePhoto({ key, target = 'station' }) {
             try {
                 const chooseRes = await new Promise((resolve, reject) => {
                     uni.chooseImage({
@@ -1320,10 +1374,26 @@ export default {
                 })
 
                 const savedPath = saveRes.savedFilePath
-                const oldPath = this.photos[key]
-                if (oldPath) this.tryRemoveFile(oldPath)
 
-                this.photos = { ...this.photos, [key]: savedPath }
+                if (target === 'switchgear') {
+                    if (!this.selectedSwitchgear) return
+                    const { segIndex, rowIndex } = this.selectedSwitchgear
+                    const layout = this.normalizeLayout(this.attributes.switchgear_layout)
+                    if (!layout[segIndex] || !layout[segIndex][rowIndex]) return
+
+                    const row = { ...layout[segIndex][rowIndex] }
+                    const oldPath = (row._photos || {})[key]
+                    if (oldPath) this.tryRemoveFile(oldPath)
+
+                    row._photos = { ...(row._photos || {}), [key]: savedPath }
+                    layout[segIndex][rowIndex] = row
+                    this.attributes = { ...this.attributes, switchgear_layout: layout }
+                } else {
+                    const oldPath = this.photos[key]
+                    if (oldPath) this.tryRemoveFile(oldPath)
+                    this.photos = { ...this.photos, [key]: savedPath }
+                }
+
                 uni.showToast({ title: '拍照成功', icon: 'success' })
             } catch (e) {
                 if (e && e.errMsg && e.errMsg.indexOf('cancel') > -1) return
@@ -1339,13 +1409,32 @@ export default {
             })
         },
 
-        onDeletePhoto({ key }) {
-            const filePath = this.photos[key]
-            if (filePath) this.tryRemoveFile(filePath)
+        onDeletePhoto({ key, target = 'station' }) {
+            if (target === 'switchgear') {
+                if (!this.selectedSwitchgear) return
+                const { segIndex, rowIndex } = this.selectedSwitchgear
+                const layout = this.normalizeLayout(this.attributes.switchgear_layout)
+                if (!layout[segIndex] || !layout[segIndex][rowIndex]) return
 
-            const newPhotos = { ...this.photos }
-            delete newPhotos[key]
-            this.photos = newPhotos
+                const row = { ...layout[segIndex][rowIndex] }
+                const filePath = (row._photos || {})[key]
+                if (filePath) this.tryRemoveFile(filePath)
+
+                const newPhotos = { ...(row._photos || {}) }
+                delete newPhotos[key]
+                row._photos = newPhotos
+
+                layout[segIndex][rowIndex] = row
+                this.attributes = { ...this.attributes, switchgear_layout: layout }
+            } else {
+                const filePath = this.photos[key]
+                if (filePath) this.tryRemoveFile(filePath)
+
+                const newPhotos = { ...this.photos }
+                delete newPhotos[key]
+                this.photos = newPhotos
+            }
+
             uni.showToast({ title: '已删除', icon: 'success' })
         },
 
@@ -1362,10 +1451,21 @@ export default {
         onSlotTap(slot) {
             const filePath = this.photos[slot.key]
             if (filePath) {
-                this.actionSheet.slot = { key: slot.key, label: slot.label, filePath }
+                this.actionSheet.slot = { key: slot.key, label: slot.label, filePath, target: 'station' }
                 this.actionSheet.visible = true
             } else {
-                this.onTakePhoto({ key: slot.key, label: slot.label })
+                this.onTakePhoto({ key: slot.key, label: slot.label, target: 'station' })
+            }
+        },
+
+        // 开关柜槽位点击
+        onSwitchgearSlotTap(slot) {
+            const filePath = this.selectedSwitchgearPhotos[slot.key]
+            if (filePath) {
+                this.actionSheet.slot = { key: slot.key, label: slot.label, filePath, target: 'switchgear' }
+                this.actionSheet.visible = true
+            } else {
+                this.onTakePhoto({ key: slot.key, label: slot.label, target: 'switchgear' })
             }
         },
 
@@ -1376,14 +1476,14 @@ export default {
         },
 
         handleActionRetakePhoto() {
-            const { key, label } = this.actionSheet.slot
-            this.onTakePhoto({ key, label })
+            const { key, label, target } = this.actionSheet.slot
+            this.onTakePhoto({ key, label, target: target || 'station' })
             this.closeActionSheet()
         },
 
         handleActionDeletePhoto() {
-            const { key } = this.actionSheet.slot
-            this.onDeletePhoto({ key })
+            const { key, target } = this.actionSheet.slot
+            this.onDeletePhoto({ key, target: target || 'station' })
             this.closeActionSheet()
         },
 
@@ -1394,23 +1494,50 @@ export default {
 
         onAddSlotTap() {
             this.addSlotModal.label = ''
+            this.addSlotModal.target = 'station'
+            this.addSlotModal.visible = true
+        },
+
+        onSwitchgearAddSlotTap() {
+            if (!this.selectedSwitchgear) return
+            this.addSlotModal.label = ''
+            this.addSlotModal.target = 'switchgear'
             this.addSlotModal.visible = true
         },
 
         onConfirmAddSlot() {
             const label = this.addSlotModal.label.trim()
             if (!label) return
-            this.extraPhotoSlots.push({
-                key: `extra_${Date.now()}`,
-                label
-            })
+
+            if (this.addSlotModal.target === 'switchgear') {
+                if (!this.selectedSwitchgear) return
+                const { segIndex, rowIndex } = this.selectedSwitchgear
+                const layout = this.normalizeLayout(this.attributes.switchgear_layout)
+                if (!layout[segIndex] || !layout[segIndex][rowIndex]) return
+
+                const row = { ...layout[segIndex][rowIndex] }
+                const currentSlots = Array.isArray(row._extraPhotoSlots) ? [...row._extraPhotoSlots] : []
+                currentSlots.push({ key: `extra_${Date.now()}`, label })
+                row._extraPhotoSlots = currentSlots
+
+                layout[segIndex][rowIndex] = row
+                this.attributes = { ...this.attributes, switchgear_layout: layout }
+            } else {
+                this.extraPhotoSlots.push({
+                    key: `extra_${Date.now()}`,
+                    label
+                })
+            }
+
             this.addSlotModal.visible = false
             this.addSlotModal.label = ''
+            this.addSlotModal.target = 'station'
         },
 
         onCancelAddSlot() {
             this.addSlotModal.visible = false
             this.addSlotModal.label = ''
+            this.addSlotModal.target = 'station'
         },
 
         /* ========== 其他 ========== */
@@ -1471,6 +1598,7 @@ export default {
             if (this.busbarCount > 0) {
                 const layout = this.normalizeLayout(this.attributes.switchgear_layout)
                 const requiredEditorFields = (this.switchgearEditorFields || []).filter(f => f.required)
+                const requiredSwitchgearPhotoSlots = (this.switchgearSchema?.photoSlots || []).filter(s => s.required)
 
                 for (let segIndex = 0; segIndex < this.busbarCount; segIndex += 1) {
                     const col = layout[segIndex] || []
@@ -1482,6 +1610,14 @@ export default {
                                 errors.push(`${this.busbarLabels[segIndex]}段母线 · 柜${rowIndex + 1}：${field.label}不能为空`)
                             }
                         }
+
+                        // 照片必填校验
+                        requiredSwitchgearPhotoSlots.forEach(slot => {
+                            const rowPhotos = row?._photos || {}
+                            if (!rowPhotos[slot.key]) {
+                                errors.push(`${this.busbarLabels[segIndex]}段母线 · 柜${rowIndex + 1}：请上传照片：${slot.label}`)
+                            }
+                        })
                     }
                 }
             }

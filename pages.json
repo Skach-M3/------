@@ -20,6 +20,13 @@
 			}
 		},
 		{
+			"path": "pages/device/edit_Station",
+			"style": {
+				"navigationBarTitleText": "填写设备信息",
+				"navigationStyle": "custom"
+			}
+		},
+		{
 			"path": "pages/line/edit",
 			"style": {
 				"navigationBarTitleText": "",

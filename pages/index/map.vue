@@ -498,7 +498,12 @@ const handleNavigate = () => {
 const handleDetails = () => {
   const info = currentDeviceInfo.value;
   console.log(info);
-  const url = `/pages/device/edit?lineId=${lineId.value}&lineName=${encodeURIComponent(lineName.value)}&deviceType=${info.deviceType}&lat=${info.lat}&lng=${info.lng}&deviceId=${info.id}`;
+  let url;
+  if (info.deviceType === 'station') {
+    url = `/pages/device/edit_Station?lineId=${lineId.value}&lineName=${encodeURIComponent(lineName.value)}&deviceType=${info.deviceType}&lat=${Number(info.lat).toFixed(8)}&lng=${Number(info.lng).toFixed(8)}&deviceId=${info.id}`;
+  } else {
+    url = `/pages/device/edit?lineId=${lineId.value}&lineName=${encodeURIComponent(lineName.value)}&deviceType=${info.deviceType}&lat=${Number(info.lat).toFixed(8)}&lng=${Number(info.lng).toFixed(8)}&deviceId=${info.id}`;
+  }
 
   uni.navigateTo({
     url,
@@ -761,7 +766,14 @@ const handleFabClick = (item: any) => {
     lng = mapConfig.center[1];
   }
   // DEBUG END
-  const url = `/pages/device/edit?lineId=${lineId.value}&lineName=${encodeURIComponent(lineName.value)}&deviceType=${item.deviceType}&lat=${Number(lat).toFixed(6)}&lng=${Number(lng).toFixed(6)}`;
+  // 站房单独处理
+  let url;
+  if (item.deviceType === 'station') {
+    url = `/pages/device/edit_Station?lineId=${lineId.value}&lineName=${encodeURIComponent(lineName.value)}&deviceType=${item.deviceType}&lat=${Number(lat).toFixed(8)}&lng=${Number(lng).toFixed(8)}`;
+  } else {
+    url = `/pages/device/edit?lineId=${lineId.value}&lineName=${encodeURIComponent(lineName.value)}&deviceType=${item.deviceType}&lat=${Number(lat).toFixed(8)}&lng=${Number(lng).toFixed(8)}`;
+  }
+
 
   uni.navigateTo({
     url,

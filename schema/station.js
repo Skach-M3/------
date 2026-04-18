@@ -88,7 +88,6 @@ export default {
             // 该字段变化时触发：
             // 1. 动态显示/隐藏电源线路名称字段
             // 2. 动态调整开关柜布局区域数
-            triggerDynamic: true,
             exportOrder: 5,
             exportLabel: '母线数'
         },
@@ -152,98 +151,39 @@ export default {
             key: 'switchgear_layout',
             label: '开关柜布局',
             group: '母线开关柜信息',
-            type: 'dynamic-layout',
+            type: 'switchgear_layout',
             /**
              * ============ 动态布局说明 ============
              *
-             * 此字段为站房最核心的交互逻辑，渲染引擎需特殊处理。
+             * 此字段为站房最核心的交互逻辑，需特殊处理。
              *
              * 【业务规则】
-             * 1. 区域数量由 busbar_count 决定：
-             *    - "无母线"(0) → 1 个区域（整体）
-             *    - "Ⅰ段"(1) → 1 个区域
-             *    - "Ⅱ段"(2) → 2 个区域（Ⅰ母小号侧 / Ⅱ母大号侧 等）
-             *    - "Ⅲ段"(3) → 3 个区域
-             *    - "Ⅳ段"(4) → 4 个区域
+             * 此字段为动态布局字段，根据 busbar_count 动态生成列数。
+             * 1. 列数及表头由 busbar_count 决定：
+             *    - "无母线"(0) → 不显示这个表单项
+             *    - "Ⅰ段"(1) → 1 个列（表头：Ⅰ段母线）
+             *    - "Ⅱ段"(2) → 2 个列（表头：Ⅰ段母线、Ⅱ段母线）
+             *    - "Ⅲ段"(3) → 3 个列（表头：Ⅰ段母线、Ⅱ段母线、Ⅲ段母线）
+             *    - "Ⅳ段"(4) → 4 个列（表头：Ⅰ段母线、Ⅱ段母线、Ⅲ段母线、Ⅳ段母线）
              *
-             * 2. 每个区域内有一个数字输入框，用户输入开关柜数量 N，
-             *    系统自动在该区域下方生成 N 条"开关柜"(switchgear) 子设备记录。
+             * 2. 动态生成逻辑（核心交互）：
+             *    - 每个列第一行提供一个数字输入框（胶囊样式），用户输入该段母线下的开关柜数量 N。
+             *    - 系统自动在该列下方纵向生成 N 个开关柜占位区块。
+             *    - 各列生成的区块数量相互独立，且每个区块内部需按从上到下的顺序自动显示序号（1, 2, 3... N）。
+             *    - 视觉上呈现为顶部对齐的多列网格布局，下方空白区域不进行补齐。
+             *    - 点击一个开关柜占位区块，下方会显示该开关柜的详细信息，可编辑。
+             *    
              *
              * 3. 开关柜 (switchgear) 是独立的设备类型（见 schema/switchgear.js），
              *    其他设备（如变压器）可在"上级节点"中选择 某站房 → 某开关柜。
              *
              * 4. 导出时站房和开关柜分开导出为两张工作表。
-             *
+             * 
              * 【存储结构】
-             * switchgear_layout 字段值示例（busbar_count = 2，双列面对面）：
-             * {
-             *   regions: [
-             *     {
-             *       regionKey: 'busbar_1_small',
-             *       regionLabel: 'Ⅰ母小号侧',
-             *       cabinetCount: 5,
-             *       switchgearIds: ['sw_001', 'sw_002', 'sw_003', 'sw_004', 'sw_005']
-             *     },
-             *     {
-             *       regionKey: 'busbar_1_large',
-             *       regionLabel: 'Ⅰ母大号侧',
-             *       cabinetCount: 3,
-             *       switchgearIds: ['sw_006', 'sw_007', 'sw_008']
-             *     },
-             *     {
-             *       regionKey: 'busbar_2_small',
-             *       regionLabel: 'Ⅱ母小号侧',
-             *       cabinetCount: 4,
-             *       switchgearIds: ['sw_009', 'sw_010', 'sw_011', 'sw_012']
-             *     },
-             *     {
-             *       regionKey: 'busbar_2_large',
-             *       regionLabel: 'Ⅱ母大号侧',
-             *       cabinetCount: 2,
-             *       switchgearIds: ['sw_013', 'sw_014']
-             *     }
-             *   ]
-             * }
+             * 二维数组，一个母线一个数组，每个数组里有N个开关柜id
+             *
              */
-            dependsOn: ['busbar_count', 'cabinet_layout_method'],
-            regionConfig: {
-                // 根据母线数和布置方式生成区域
-                // 单列 → 每段母线 1 个区域
-                // 双列面对面 / 双列背对背 → 每段母线 2 个区域（小号侧 + 大号侧）
-                // L型 → 每段母线 2 个区域（横向 + 纵向）
-                templates: {
-                    '单列': {
-                        regionsPerBusbar: 1,
-                        regionLabels: (busbarIndex) => [`Ⅰ,Ⅱ,Ⅲ,Ⅳ`.split(',')[busbarIndex] + '母']
-                    },
-                    '双列面对面': {
-                        regionsPerBusbar: 2,
-                        regionLabels: (busbarIndex) => {
-                            const prefix = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ'][busbarIndex]
-                            return [`${prefix}母小号侧`, `${prefix}母大号侧`]
-                        }
-                    },
-                    '双列背对背': {
-                        regionsPerBusbar: 2,
-                        regionLabels: (busbarIndex) => {
-                            const prefix = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ'][busbarIndex]
-                            return [`${prefix}母小号侧`, `${prefix}母大号侧`]
-                        }
-                    },
-                    'L型': {
-                        regionsPerBusbar: 2,
-                        regionLabels: (busbarIndex) => {
-                            const prefix = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ'][busbarIndex]
-                            return [`${prefix}母横向`, `${prefix}母纵向`]
-                        }
-                    }
-                },
-                // 无母线时的特殊处理
-                noBusbar: {
-                    regionsCount: 1,
-                    regionLabels: ['全部']
-                }
-            },
+            dependsOn: 'busbar_count',
             childDeviceType: 'switchgear',  // 生成的子设备类型
             exportOrder: 10,
             exportLabel: '开关柜布局'

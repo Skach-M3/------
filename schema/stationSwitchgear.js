@@ -10,14 +10,6 @@ export default {
     parentDeviceType: 'station',          // 父设备为站房
     parentFieldKey: 'belong_station',     // 关联父设备的字段
     isAvailablePreNode: true,             // 可被其他设备选为上级节点
-    exportSeparately: true,               // 导出时与站房分开为两张表
-
-    // ===== 自动编号规则 =====
-    autoNumbering: {
-        // 花园开闭所Ⅰ段母线开关柜01
-        template: '{station_name}{region_label}开关柜{seq:2}',
-        dependsOn: ['belong_station', 'region_label']
-    },
 
     fields: [
         // ===== 基础信息 =====
@@ -30,9 +22,8 @@ export default {
             editable: false,
             required: true,
             placeholder: '自动获取当前站房名称',
-            tip: '自动为当前站房的名称，如花园开闭所',
             exportOrder: 1,
-            exportLabel: '所属站房'
+            exportLabel: '所属杆站房'
         },
         {
             key: 'cabinet_name',
@@ -79,13 +70,13 @@ export default {
             type: 'select',
             required: true,
             options: [
+                { label: '其他', value: '其他' },
                 { label: '电源进线柜', value: '电源进线柜' },
                 { label: '电源出线柜', value: '电源出线柜' },
                 { label: '变压器出线柜', value: '变压器出线柜' },
                 { label: '计量柜', value: '计量柜' },
                 { label: '联络柜', value: '联络柜' },
-                { label: '无法识别', value: '无法识别' },
-                { label: '其他', value: '其他' }
+                { label: '无法识别', value: '无法识别' }
             ],
             exportOrder: 4,
             exportLabel: '开关柜类型'

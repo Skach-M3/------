@@ -57,16 +57,14 @@ export const MAP_SVGS = {
     // 计量信息
     meter:
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="16" height="16">'
-        + '<rect x="10" y="10" width="180" height="180" fill="#fff"/>'
-        + '<rect x="30" y="30" width="140" height="140" fill="#3bbffb"/>'
+        + '<path d="M10 10h180v180H10z M30 30h140v140H30z" fill="#fff" fill-rule="evenodd"/>'
         + '<text x="100" y="130" font-family="Times New Roman, serif" font-size="110" font-weight="bold" fill="#fff" text-anchor="middle">JL</text>'
         + '</svg>',
 
     // 站房
     station:
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="16" height="16">'
-        + '<rect x="10" y="10" width="180" height="180" fill="#fff"/>'
-        + '<rect x="30" y="30" width="140" height="140" fill="#3bbffb"/>'
+        + '<path d="M10 10h180v180H10z M30 30h140v140H30z" fill="#fff" fill-rule="evenodd"/>'
         + '<text x="100" y="135" font-family="Times New Roman, serif" font-size="110" font-weight="bold" fill="#fff" text-anchor="middle">ZF</text>'
         + '</svg>',
 

@@ -1,6 +1,6 @@
 // schema/station-switchgear.js — 站房开关柜（站房子设备）
 export default {
-    deviceType: 'station-switchgear',
+    deviceType: 'station_switchgear',
     label: '站房开关柜',
     icon: '/static/icons/switchgear.png',
     category: '10kV',
@@ -114,15 +114,11 @@ export default {
             placeholder: '请输入备注',
             exportOrder: 7,
             exportLabel: '备注2'
-        }
-    ],
-
-    // ===== 隐藏字段（由站房布局自动写入） =====
-    hiddenFields: [
+        },
         {
             key: 'region_label',
             label: '所属区域',
-            type: 'auto-fill',
+            type: 'hidden',
             source: 'parent-layout',         // 由站房 switchgear_layout 自动注入
             // 值如："Ⅰ段母线"、"Ⅱ母小号侧" 等
             exportOrder: 8,
@@ -131,15 +127,20 @@ export default {
         {
             key: 'region_key',
             label: '区域标识',
-            type: 'auto-fill',
+            type: 'hidden',
             source: 'parent-layout'
         },
         {
             key: 'sort_index',
             label: '区域内排序',
-            type: 'number',
+            type: 'hidden',
             source: 'parent-layout'
         }
+    ],
+
+    // ===== 隐藏字段（由站房布局自动写入） =====
+    hiddenFields: [
+
     ],
 
     // ===== 照片 =====

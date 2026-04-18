@@ -534,6 +534,11 @@ export default {
                 await this.loadPreNodeDisplay()
                 this.syncCoordsToAttributes()
 
+                // 从 devices 表加载已有的 station_switchgear 合并到布局
+                if (this.deviceType === 'station') {
+                    await this.loadSwitchgearFromDB()
+                }
+
                 // 编辑态默认视为已确定编号，避免自动覆盖
                 if (this.deviceType === 'stationSwitchgear') {
                     this.cabinetNumberManuallyEdited = true
@@ -542,6 +547,179 @@ export default {
                 console.error('加载设备失败:', e)
                 uni.showToast({ title: '加载失败', icon: 'none' })
             }
+        },
+
+        /** 从 devices 表加载子开关柜，按 region_key + sort_index 重建 switchgear_layout */
+        async loadSwitchgearFromDB() {
+            try {
+                const list = await deviceDAO.findByParent(
+                    this.lineId,
+                    'station_switchgear',
+                    this.deviceId
+                )
+                if (!Array.isArray(list)) return
+
+                this.ensureLayoutByBusbarCount()
+                const layout = this.normalizeLayout(this.attributes.switchgear_layout)
+
+                // 以 DB 为准重建每段母线的柜列表
+                for (let i = 0; i < layout.length; i += 1) layout[i] = []
+
+                list.forEach(device => {
+                    const attrs = device.attributes
+                        ? (typeof device.attributes === 'string' ? JSON.parse(device.attributes) : device.attributes)
+                        : {}
+
+                    // 1) 优先用 region_key（形如 seg_1/seg_2）解析段索引
+                    let segIndex = -1
+                    if (attrs.region_key) {
+                        const m = String(attrs.region_key).match(/\d+/)
+                        if (m) segIndex = parseInt(m[0], 10) - 1
+                    }
+                    // 2) 兜底：按 sort_order 回推
+                    if (segIndex < 0 && device.sort_order !== undefined) {
+                        segIndex = Math.floor((device.sort_order || 0) / 100)
+                    }
+                    if (segIndex < 0 || segIndex >= layout.length) return
+
+                    const sortIdx = Number(attrs.sort_index)
+                    const rowIndex = Number.isFinite(sortIdx) && sortIdx > 0
+                        ? sortIdx - 1
+                        : layout[segIndex].length
+
+                    const row = {
+                        deviceId: device.id,
+                        localId: `db_${device.id}`,
+                        belong_station: attrs.belong_station || '',
+                        name: attrs.cabinet_name || device.name || '',
+                        cabinet_name: attrs.cabinet_name || device.name || '',
+                        cabinet_number: attrs.cabinet_number || '',
+                        cabinet_type: attrs.cabinet_type || '',
+                        switch_status: attrs.switch_status || '',
+                        remark_1: attrs.remark_1 || '',
+                        remark_2: attrs.remark_2 || '',
+                        region_label: attrs.region_label || '',
+                        region_key: attrs.region_key || '',
+                        sort_index: attrs.sort_index || 0
+                    }
+
+                    // 填到指定位置，允许稀疏
+                    layout[segIndex][rowIndex] = row
+                })
+
+                // 压实稀疏数组（去掉空洞）
+                for (let i = 0; i < layout.length; i += 1) {
+                    layout[i] = (layout[i] || []).filter(Boolean)
+                }
+
+                this.attributes = { ...this.attributes, switchgear_layout: layout }
+            } catch (e) {
+                console.error('加载开关柜失败:', e)
+            }
+        },
+
+        /**
+         * 把 switchgear_layout 同步到 devices 表
+         * - 有 deviceId 且仍存在 → update
+         * - 无 deviceId → insert
+         * - DB 中已有但 layout 里已移除 → deleteWithChildren
+         */
+        async syncSwitchgearToDB(stationId) {
+            if (!stationId) return
+
+            const layout = this.normalizeLayout(this.attributes.switchgear_layout)
+            const stationName = this.getStationNameForLayout()
+
+            // 1) 先查 DB 里已有的
+            let existingList = []
+            try {
+                existingList = await deviceDAO.findByParent(
+                    this.lineId,
+                    'station_switchgear',
+                    stationId
+                ) || []
+            } catch (e) {
+                console.warn('查询子开关柜失败:', e)
+                existingList = []
+            }
+            const existingIdSet = new Set(existingList.map(d => d.id))
+            const keptIdSet = new Set()
+
+            // 2) 遍历 layout，insert/update
+            for (let segIndex = 0; segIndex < layout.length; segIndex += 1) {
+                const col = layout[segIndex] || []
+                for (let rowIndex = 0; rowIndex < col.length; rowIndex += 1) {
+                    const row = col[rowIndex]
+                    if (!row) continue
+
+                    const belongStation = row.belong_station || stationName || ''
+                    const cabinetNumber =
+                        row.cabinet_number ||
+                        this.buildLayoutCabinetNumber(segIndex, rowIndex, belongStation)
+
+                    const attrs = {
+                        belong_station: belongStation,
+                        cabinet_name: row.cabinet_name || row.name || '',
+                        cabinet_number: cabinetNumber,
+                        cabinet_type: row.cabinet_type || '',
+                        switch_status: row.switch_status || '',
+                        remark_1: row.remark_1 || '',
+                        remark_2: row.remark_2 || '',
+                        region_label: row.region_label || `${this.busbarLabels[segIndex] || ''}段`,
+                        region_key: row.region_key || `seg_${segIndex + 1}`,
+                        sort_index: rowIndex + 1
+                    }
+
+                    const name = attrs.cabinet_name || cabinetNumber || '开关柜'
+                    const sortOrder = segIndex * 100 + rowIndex + 1
+
+                    const deviceData = {
+                        line_id: this.lineId,
+                        device_type: 'station_switchgear',
+                        parent_id: stationId,
+                        prev_id: '',
+                        name,
+                        longitude: '',
+                        latitude: '',
+                        sort_order: sortOrder,
+                        attributes: JSON.stringify(attrs)
+                    }
+
+                    try {
+                        if (row.deviceId && existingIdSet.has(row.deviceId)) {
+                            await deviceDAO.update(row.deviceId, deviceData)
+                            keptIdSet.add(row.deviceId)
+                        } else {
+                            const newId = await deviceDAO.insert(deviceData)
+                            row.deviceId = newId
+                            keptIdSet.add(newId)
+                        }
+                        // 回写到布局项（便于用户保存后继续编辑）
+                        row.cabinet_number = cabinetNumber
+                        row.belong_station = belongStation
+                        row.region_label = attrs.region_label
+                        row.region_key = attrs.region_key
+                        row.sort_index = attrs.sort_index
+                    } catch (e) {
+                        console.error(`同步开关柜失败(${segIndex + 1}-${rowIndex + 1}):`, e)
+                        throw e
+                    }
+                }
+            }
+
+            // 3) 删除 DB 中已被用户移除的开关柜
+            for (const existing of existingList) {
+                if (!keptIdSet.has(existing.id)) {
+                    try {
+                        await deviceDAO.deleteWithChildren(existing.id)
+                    } catch (e) {
+                        console.warn('删除旧开关柜失败:', e)
+                    }
+                }
+            }
+
+            // 4) 回写布局到 attributes
+            this.attributes = { ...this.attributes, switchgear_layout: layout }
         },
 
         async initNewDevice() {
@@ -598,7 +776,7 @@ export default {
         getSchemaByType(type) {
             const map = {
                 station,
-                'stationSwitchgear': stationSwitchgear
+                'station_switchgear': stationSwitchgear
             }
             return map[type] || station
         },
@@ -787,7 +965,7 @@ export default {
             const seq = Number.isNaN(seqRaw) ? 1 : Math.max(1, seqRaw)
             const seqText = String(seq).padStart(2, '0')
 
-            const cabinetNo = `${belongStation}${regionLabel}开关柜${seqText}`
+            const cabinetNo = `${belongStation}${regionLabel}母线开关柜${seqText}`
             this.attributes = { ...this.attributes, cabinet_number: cabinetNo }
         },
 
@@ -894,6 +1072,7 @@ export default {
                     const base = (item && typeof item === 'object') ? { ...item } : {}
                     return {
                         ...base, // 保留已有所有字段，避免数据丢失
+                        deviceId: base.deviceId || '',
                         localId: base.localId || `${Date.now()}_${colIndex}_${idx}_${Math.random().toString(36).slice(2, 8)}`,
                         // 兼容旧数据：name 与 cabinet_name 互补
                         name: base.name || base.cabinet_name || '',
@@ -905,6 +1084,7 @@ export default {
 
         createSwitchgearItem(segIndex, rowIndex) {
             return {
+                deviceId: '',
                 localId: `${Date.now()}_${Math.random()}_${segIndex}_${rowIndex}`,
                 belong_station: this.attributes.belong_station || '',
                 cabinet_name: '',
@@ -963,6 +1143,7 @@ export default {
                 const addLen = targetCount - col.length
                 for (let i = 0; i < addLen; i += 1) {
                     col.push({
+                        deviceId: '',
                         localId: `${Date.now()}_${Math.random()}_${segIndex}_${col.length + 1}`,
                         name: '',
                         cabinet_name: '',
@@ -1053,7 +1234,7 @@ export default {
             if (!stationName) return ''
             const regionLabel = `${this.busbarLabels[segIndex] || ''}段`
             const seqText = String(rowIndex + 1).padStart(2, '0')
-            return `${stationName}${regionLabel}开关柜${seqText}`
+            return `${stationName}${regionLabel}母线开关柜${seqText}`
         },
 
         syncSwitchgearAutoFields({ overwriteBelong = false, overwriteCabinet = false } = {}) {
@@ -1349,16 +1530,22 @@ export default {
             }
 
             try {
+                let stationId = this.deviceId
                 if (this.deviceId) {
                     await deviceDAO.update(this.deviceId, deviceData)
-                    uni.showToast({ title: '保存成功', icon: 'success' })
-                    setTimeout(() => { uni.navigateBack() }, 500)
                 } else {
                     const newId = await deviceDAO.insert(deviceData)
                     this.deviceId = newId
-                    uni.showToast({ title: '保存成功', icon: 'success' })
-                    setTimeout(() => { uni.navigateBack() }, 500)
+                    stationId = newId
                 }
+
+                // 同步子开关柜到 devices 表
+                if (this.deviceType === 'station') {
+                    await this.syncSwitchgearToDB(stationId)
+                }
+
+                uni.showToast({ title: '保存成功', icon: 'success' })
+                setTimeout(() => { uni.navigateBack() }, 500)
             } catch (e) {
                 console.error('保存失败:', e)
                 uni.showToast({ title: '保存失败', icon: 'none' })

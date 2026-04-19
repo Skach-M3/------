@@ -7,20 +7,27 @@
         <text class="card-title">{{ currentSchema.preNodeFieldName || '上级节点' }}</text>
       </view>
       <view class="form-item">
-        <view class="pre-node-picker" @click="goToPreNodeSelect">
-          <view v-if="prevId" class="pre-node-info">
-            <view class="icon-box" :style="{ backgroundColor: themeColor }">
-              <image class="device-icon" :src="getPreNodeIcon()" mode="aspectFit"></image>
+        <view class="pre-node-picker">
+          <view class="picker-content" @click="goToPreNodeSelect">
+            <view v-if="prevId" class="pre-node-info">
+              <view class="icon-box" :style="{ backgroundColor: themeColor }">
+                <image class="device-icon" :src="getPreNodeIcon()" mode="aspectFit"></image>
+              </view>
+              <view class="pre-node-content">
+                <text class="pre-node-type">{{ getPreNodeDeviceLabel() }}</text>
+                <text class="pre-node-name">{{ preNodeDisplay }}</text>
+              </view>
             </view>
-            <view class="pre-node-content">
-              <text class="pre-node-type">{{ getPreNodeDeviceLabel() }}</text>
-              <text class="pre-node-name">{{ preNodeDisplay }}</text>
-            </view>
+            <text v-else class="picker-placeholder">
+              {{ '请选择' + (currentSchema.preNodeFieldName || '上级节点') }}
+            </text>
           </view>
-          <text v-else class="picker-placeholder">
-            {{ '请选择' + (currentSchema.preNodeFieldName || '上级节点') }}
-          </text>
-          <text class="picker-arrow">›</text>
+          <view class="picker-actions">
+            <view v-if="prevId" class="clear-btn" @click.stop="clearPreNode">
+              <text class="clear-icon">×</text>
+            </view>
+            <text class="picker-arrow">›</text>
+          </view>
         </view>
       </view>
     </view>
@@ -608,6 +615,18 @@ export default {
       }
     },
 
+    /** 清除上级节点 */
+    clearPreNode() {
+      this.prevId = ''
+      this.preNodeDisplay = ''
+      this.prevDeviceType = ''
+      this.parentName = ''
+      this.prevLongitude = ''
+      this.prevLatitude = ''
+      this.prevDeviceAttributes = null
+      this.calcSpanLength()
+    },
+
     /** 获取上级节点图标 */
     getPreNodeIcon() {
       return getPinSvgUri(this.prevDeviceType)
@@ -1026,6 +1045,7 @@ export default {
   padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
   background: #fff;
   box-shadow: 0 -2rpx 10rpx rgba(0, 0, 0, 0.05);
+  z-index: 10;
 }
 
 .save-btn {
@@ -1076,6 +1096,38 @@ export default {
   padding: 16rpx 20rpx;
   background: #fff;
   flex-wrap: wrap;
+}
+
+.picker-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.picker-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.clear-btn {
+  margin-right: 12rpx;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: #f0f0f0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.clear-btn:active {
+  background: #e0e0e0;
+}
+
+.clear-icon {
+  font-size: 24rpx;
+  color: #999;
+  font-weight: bold;
 }
 
 .pre-node-info {

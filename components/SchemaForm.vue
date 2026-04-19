@@ -64,50 +64,77 @@
             <!-- select 单选下拉 -->
             <block v-else-if="field.type === 'select'">
               <!-- 超过10个选项，使用自定义搜索弹窗 -->
-              <view v-if="field.options && field.options.length > 10" class="picker-box"
-                :class="{ 'picker-disabled': field.editable === false }"
-                @click="field.editable !== false && openSearchSelect(field, field.options)">
-                <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
-                  {{ getDisplayLabel(field.options, modelValue[field.key]) || ('请选择' + field.label) }}
-                </text>
-                <text v-if="field.editable !== false" class="picker-arrow">›</text>
-              </view>
-              <!-- 10个及以内，使用原生 picker -->
-              <picker v-else :disabled="field.editable === false" :range="getLabelsArray(field.options)"
-                :value="getPickerIndex(field.options, modelValue[field.key])"
-                @change="onPickerChange(field.key, field.options, $event)">
-                <view class="picker-box" :class="{ 'picker-disabled': field.editable === false }">
-                  <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
+              <view v-if="field.options && field.options.length > 10" class="select-wrapper">
+                <view class="picker-box" :class="{ 'picker-disabled': field.editable === false }"
+                  @click="field.editable !== false && openSearchSelect(field, field.options)">
+                  <text :class="hasValue(modelValue[field.key]) ? 'picker-text' : 'picker-placeholder'">
                     {{ getDisplayLabel(field.options, modelValue[field.key]) || ('请选择' + field.label) }}
                   </text>
+                  <!-- 始终显示箭头 -->
                   <text v-if="field.editable !== false" class="picker-arrow">›</text>
                 </view>
-              </picker>
+                <view v-if="field.editable !== false && hasValue(modelValue[field.key])" class="clear-btn"
+                  @click.stop="onClearSelect(field.key)">
+                  <text class="clear-icon">×</text>
+                </view>
+              </view>
+              <!-- 10个及以内，使用原生 picker -->
+              <view v-else class="select-wrapper">
+                <picker :disabled="field.editable === false" :range="getLabelsArray(field.options)"
+                  :value="getPickerIndex(field.options, modelValue[field.key])"
+                  @change="onPickerChange(field.key, field.options, $event)">
+                  <view class="picker-box" :class="{ 'picker-disabled': field.editable === false }">
+                    <text :class="hasValue(modelValue[field.key]) ? 'picker-text' : 'picker-placeholder'">
+                      {{ getDisplayLabel(field.options, modelValue[field.key]) || ('请选择' + field.label) }}
+                    </text>
+                    <!-- 始终显示箭头 -->
+                    <text v-if="field.editable !== false" class="picker-arrow">›</text>
+                  </view>
+                </picker>
+                <view v-if="field.editable !== false && hasValue(modelValue[field.key])" class="clear-btn"
+                  @click.stop="onClearSelect(field.key)">
+                  <text class="clear-icon">×</text>
+                </view>
+              </view>
             </block>
 
             <!-- cascading-select 级联下拉 -->
             <block v-else-if="field.type === 'cascading-select'">
               <!-- 超过10个选项，使用自定义搜索弹窗 -->
               <block v-if="getCascadingOptions(field).length > 10">
-                <view class="picker-box" @click="openSearchSelect(field, getCascadingOptions(field))">
-                  <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
-                    {{ getDisplayLabel(getCascadingOptions(field), modelValue[field.key]) || ('请选择' + field.label) }}
-                  </text>
-                  <text class="picker-arrow">›</text>
+                <view class="select-wrapper">
+                  <view class="picker-box" @click="openSearchSelect(field, getCascadingOptions(field))">
+                    <text :class="hasValue(modelValue[field.key]) ? 'picker-text' : 'picker-placeholder'">
+                      {{ getDisplayLabel(getCascadingOptions(field), modelValue[field.key]) || ('请选择' + field.label) }}
+                    </text>
+                    <!-- 始终显示箭头 -->
+                    <text class="picker-arrow">›</text>
+                  </view>
+                  <view v-if="hasValue(modelValue[field.key])" class="clear-btn" @click.stop="onClearSelect(field.key)">
+                    <text class="clear-icon">×</text>
+                  </view>
                 </view>
               </block>
               <!-- 10个及以内，使用原生 picker -->
-              <picker v-else-if="getCascadingOptions(field).length > 0"
-                :range="getLabelsArray(getCascadingOptions(field))"
-                :value="getPickerIndex(getCascadingOptions(field), modelValue[field.key])"
-                @change="onPickerChange(field.key, getCascadingOptions(field), $event)">
-                <view class="picker-box">
-                  <text :class="modelValue[field.key] ? 'picker-text' : 'picker-placeholder'">
-                    {{ getDisplayLabel(getCascadingOptions(field), modelValue[field.key]) || ('请选择' + field.label) }}
-                  </text>
-                  <text class="picker-arrow">›</text>
+              <block v-else-if="getCascadingOptions(field).length > 0">
+                <view class="select-wrapper">
+                  <picker :range="getLabelsArray(getCascadingOptions(field))"
+                    :value="getPickerIndex(getCascadingOptions(field), modelValue[field.key])"
+                    @change="onPickerChange(field.key, getCascadingOptions(field), $event)">
+                    <view class="picker-box">
+                      <text :class="hasValue(modelValue[field.key]) ? 'picker-text' : 'picker-placeholder'">
+                        {{ getDisplayLabel(getCascadingOptions(field), modelValue[field.key]) || ('请选择' + field.label)
+                        }}
+                      </text>
+                      <!-- 始终显示箭头 -->
+                      <text class="picker-arrow">›</text>
+                    </view>
+                  </picker>
+                  <view v-if="hasValue(modelValue[field.key])" class="clear-btn" @click.stop="onClearSelect(field.key)">
+                    <text class="clear-icon">×</text>
+                  </view>
                 </view>
-              </picker>
+              </block>
               <view v-else class="picker-box picker-disabled">
                 <text class="picker-placeholder">
                   {{ modelValue[field.dependsOn] ? '暂无可选项' : ('请先选择' + getFieldLabel(field.dependsOn)) }}
@@ -602,6 +629,16 @@ export default {
 
     onCancelCustomInput() {
       this.customInputModal.visible = false
+    },
+
+    /** 清除选择框内容 */
+    onClearSelect(key) {
+      this.onInput(key, '')
+    },
+
+    /** 判断是否有值（兼容值为 0 的情况） */
+    hasValue(val) {
+      return val !== undefined && val !== null && val !== '';
     },
 
     getCustomValues(key) {
@@ -1280,6 +1317,36 @@ export default {
 .picker-arrow {
   font-size: 32rpx;
   color: #c0c4cc;
+}
+
+.select-wrapper {
+  position: relative;
+}
+
+.select-wrapper .clear-btn {
+  position: absolute;
+  right: 20rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-right: 22rpx;
+  z-index: 1;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: #f0f0f0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.select-wrapper .clear-btn:active {
+  background: #e0e0e0;
+}
+
+.select-wrapper .clear-icon {
+  font-size: 24rpx;
+  color: #999;
+  font-weight: bold;
 }
 
 /* ---- 自动计算只读框 ---- */

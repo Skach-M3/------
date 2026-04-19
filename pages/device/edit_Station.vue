@@ -6,20 +6,27 @@
                 <text class="card-title">{{ currentSchema.preNodeFieldName || '上级节点' }}</text>
             </view>
             <view class="form-item">
-                <view class="pre-node-picker" @click="goToPreNodeSelect">
-                    <view v-if="prevId" class="pre-node-info">
-                        <view class="icon-box" :style="{ backgroundColor: themeColor }">
-                            <image class="device-icon" :src="getPreNodeIcon()" mode="aspectFit"></image>
+                <view class="pre-node-picker">
+                    <view class="picker-content" @click="goToPreNodeSelect">
+                        <view v-if="prevId" class="pre-node-info">
+                            <view class="icon-box" :style="{ backgroundColor: themeColor }">
+                                <image class="device-icon" :src="getPreNodeIcon()" mode="aspectFit"></image>
+                            </view>
+                            <view class="pre-node-content">
+                                <text class="pre-node-type">{{ getPreNodeDeviceLabel() }}</text>
+                                <text class="pre-node-name">{{ preNodeDisplay }}</text>
+                            </view>
                         </view>
-                        <view class="pre-node-content">
-                            <text class="pre-node-type">{{ getPreNodeDeviceLabel() }}</text>
-                            <text class="pre-node-name">{{ preNodeDisplay }}</text>
-                        </view>
+                        <text v-else class="picker-placeholder">
+                            {{ '请选择' + (currentSchema.preNodeFieldName || '上级节点') }}
+                        </text>
                     </view>
-                    <text v-else class="picker-placeholder">
-                        {{ '请选择' + (currentSchema.preNodeFieldName || '上级节点') }}
-                    </text>
-                    <text class="picker-arrow">›</text>
+                    <view class="picker-actions">
+                        <view v-if="prevId" class="clear-btn" @click.stop="clearPreNode">
+                            <text class="clear-icon">×</text>
+                        </view>
+                        <text class="picker-arrow">›</text>
+                    </view>
                 </view>
             </view>
         </view>
@@ -61,7 +68,7 @@
                                 <!-- auto-fill（新增） -->
                                 <view v-else-if="field.type === 'auto-fill'" class="auto-calc-box">
                                     <text class="auto-calc-value">{{ attributes[field.key] || field.placeholder || '—'
-                                        }}</text>
+                                    }}</text>
                                 </view>
 
                                 <!-- composite-name -->
@@ -74,18 +81,24 @@
                                 </view>
 
                                 <!-- select -->
-                                <picker v-else-if="field.type === 'select'" :disabled="field.editable === false"
-                                    :range="getLabelsArray(field.options)"
-                                    :value="getPickerIndex(field.options, attributes[field.key])"
-                                    @change="onPickerChange(field.key, field.options, $event)">
-                                    <view class="picker-box" :class="{ 'picker-disabled': field.editable === false }">
-                                        <text :class="attributes[field.key] ? 'picker-text' : 'picker-placeholder'">
-                                            {{ getDisplayLabel(field.options, attributes[field.key]) || ('请选择' +
-                                                field.label) }}
-                                        </text>
-                                        <text v-if="field.editable !== false" class="picker-arrow">›</text>
+                                <view v-else-if="field.type === 'select'" class="select-wrapper">
+                                    <picker :disabled="field.editable === false" :range="getLabelsArray(field.options)"
+                                        :value="getPickerIndex(field.options, attributes[field.key])"
+                                        @change="onPickerChange(field.key, field.options, $event)">
+                                        <view class="picker-box"
+                                            :class="{ 'picker-disabled': field.editable === false }">
+                                            <text :class="attributes[field.key] ? 'picker-text' : 'picker-placeholder'">
+                                                {{ getDisplayLabel(field.options, attributes[field.key]) || ('请选择' +
+                                                    field.label) }}
+                                            </text>
+                                            <text v-if="field.editable !== false" class="picker-arrow">›</text>
+                                        </view>
+                                    </picker>
+                                    <view v-if="field.editable !== false && attributes[field.key]" class="clear-btn"
+                                        @click="onClearSelect(field.key)">
+                                        <text class="clear-icon">×</text>
                                     </view>
-                                </picker>
+                                </view>
 
                                 <!-- textarea -->
                                 <textarea v-else-if="field.type === 'textarea'" class="form-textarea"
@@ -130,7 +143,7 @@
                                                             <text>-</text>
                                                         </view>
                                                         <text class="counter-value">{{ getSwitchgearCount(seg - 1)
-                                                        }}</text>
+                                                            }}</text>
                                                         <view class="counter-btn"
                                                             :class="{ 'counter-btn-disabled': !canCreateSwitchgear }"
                                                             @click="increaseCount(seg - 1)">
@@ -144,7 +157,7 @@
                                                         @click="onSelectSwitchgear(seg - 1, rowIdx)">
                                                         <text class="layout-item-index">{{ rowIdx + 1 }}</text>
                                                         <text class="layout-item-name">{{ item.name || ''
-                                                        }}</text>
+                                                            }}</text>
                                                         <view class="switch-status-indicator" :class="{
                                                             'switch-status-on': item.switch_status === '合',
                                                             'switch-status-off': item.switch_status === '分'
@@ -907,6 +920,14 @@ export default {
             }
         },
 
+        /** 清除上级节点 */
+        clearPreNode() {
+            this.prevId = ''
+            this.preNodeDisplay = ''
+            this.prevDeviceType = ''
+            this.prevDeviceAttributes = null
+        },
+
         async handleCopyFromParent() {
             const copyableKeys = (this.currentSchema.fields || [])
                 .filter(f => f.isCopyable)
@@ -1080,6 +1101,11 @@ export default {
 
             layout[segIndex][rowIndex] = row
             this.attributes = { ...this.attributes, switchgear_layout: layout }
+        },
+
+        /** 清除选择框内容 */
+        onClearSelect(key) {
+            this.attributes = { ...this.attributes, [key]: '' }
         },
 
         getSelectedSwitchgearSelectIndex(field) {
@@ -1792,6 +1818,7 @@ export default {
     padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
     background: #fff;
     box-shadow: 0 -2rpx 10rpx rgba(0, 0, 0, 0.05);
+    z-index: 10;
 }
 
 .save-btn {
@@ -1934,6 +1961,20 @@ export default {
     background: #fff;
 }
 
+.select-wrapper {
+    position: relative;
+    margin-bottom: 20rpx;
+}
+
+.select-wrapper .clear-btn {
+    position: absolute;
+    right: 20rpx;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-right: 22rpx;
+    z-index: 1;
+}
+
 .pre-node-picker {
     display: flex;
     flex-direction: row;
@@ -1945,6 +1986,38 @@ export default {
     padding: 16rpx 20rpx;
     background: #fff;
     flex-wrap: wrap;
+}
+
+.picker-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.picker-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.clear-btn {
+    margin-right: 12rpx;
+    width: 36rpx;
+    height: 36rpx;
+    border-radius: 50%;
+    background: #f0f0f0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.clear-btn:active {
+    background: #e0e0e0;
+}
+
+.clear-icon {
+    font-size: 24rpx;
+    color: #999;
+    font-weight: bold;
 }
 
 .pre-node-info {

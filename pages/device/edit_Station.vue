@@ -6,9 +6,18 @@
                 <text class="card-title">{{ currentSchema.preNodeFieldName || '上级节点' }}</text>
             </view>
             <view class="form-item">
-                <view class="picker-box" @click="goToPreNodeSelect">
-                    <text :class="prevId ? 'picker-text' : 'picker-placeholder'">
-                        {{ preNodeDisplay || ('请选择' + (currentSchema.preNodeFieldName || '上级节点')) }}
+                <view class="pre-node-picker" @click="goToPreNodeSelect">
+                    <view v-if="prevId" class="pre-node-info">
+                        <view class="icon-box" :style="{ backgroundColor: themeColor }">
+                            <image class="device-icon" :src="getPreNodeIcon()" mode="aspectFit"></image>
+                        </view>
+                        <view class="pre-node-content">
+                            <text class="pre-node-type">{{ getPreNodeDeviceLabel() }}</text>
+                            <text class="pre-node-name">{{ preNodeDisplay }}</text>
+                        </view>
+                    </view>
+                    <text v-else class="picker-placeholder">
+                        {{ '请选择' + (currentSchema.preNodeFieldName || '上级节点') }}
                     </text>
                     <text class="picker-arrow">›</text>
                 </view>
@@ -52,7 +61,7 @@
                                 <!-- auto-fill（新增） -->
                                 <view v-else-if="field.type === 'auto-fill'" class="auto-calc-box">
                                     <text class="auto-calc-value">{{ attributes[field.key] || field.placeholder || '—'
-                                    }}</text>
+                                        }}</text>
                                 </view>
 
                                 <!-- composite-name -->
@@ -121,7 +130,7 @@
                                                             <text>-</text>
                                                         </view>
                                                         <text class="counter-value">{{ getSwitchgearCount(seg - 1)
-                                                            }}</text>
+                                                        }}</text>
                                                         <view class="counter-btn"
                                                             :class="{ 'counter-btn-disabled': !canCreateSwitchgear }"
                                                             @click="increaseCount(seg - 1)">
@@ -135,7 +144,7 @@
                                                         @click="onSelectSwitchgear(seg - 1, rowIdx)">
                                                         <text class="layout-item-index">{{ rowIdx + 1 }}</text>
                                                         <text class="layout-item-name">{{ item.name || ''
-                                                            }}</text>
+                                                        }}</text>
                                                         <view class="switch-status-indicator" :class="{
                                                             'switch-status-on': item.switch_status === '合',
                                                             'switch-status-off': item.switch_status === '分'
@@ -356,6 +365,9 @@
 import station from '@/schema/station'
 import stationSwitchgear from '@/schema/stationSwitchgear'
 import deviceDAO from '@/dao/deviceDAO.js'
+import { themeColor } from '@/static/themeColor.js'
+import { getPinSvgUri } from '@/static/device_svgs.js'
+import { getSchema } from '@/schema/index.js'
 
 export default {
     data() {
@@ -391,6 +403,7 @@ export default {
 
             // 上级节点显示
             preNodeDisplay: '',
+            themeColor,
 
             // 照片
             photos: {},
@@ -838,6 +851,17 @@ export default {
             }
         },
 
+        /** 获取上级节点图标 */
+        getPreNodeIcon() {
+            return getPinSvgUri(this.prevDeviceType)
+        },
+
+        /** 获取上级节点设备类型标签 */
+        getPreNodeDeviceLabel() {
+            const schema = getSchema(this.prevDeviceType)
+            return schema ? schema.label : this.prevDeviceType
+        },
+
         getSchemaByType(type) {
             const map = {
                 station,
@@ -862,6 +886,7 @@ export default {
 
             this.prevId = data.id
             this.preNodeDisplay = data.name || ''
+            this.prevDeviceType = data.device_type || ''
 
             if (data.id) {
                 try {
@@ -1907,6 +1932,63 @@ export default {
     border-radius: 8rpx;
     padding: 0 20rpx;
     background: #fff;
+}
+
+.pre-node-picker {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 72rpx;
+    border: 1rpx solid #dcdfe6;
+    border-radius: 8rpx;
+    padding: 16rpx 20rpx;
+    background: #fff;
+    flex-wrap: wrap;
+}
+
+.pre-node-info {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    margin-right: 16rpx;
+}
+
+.icon-box {
+    width: 52rpx;
+    height: 52rpx;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-right: 16rpx;
+    flex-shrink: 0;
+}
+
+.device-icon {
+    width: 30rpx;
+    height: 30rpx;
+}
+
+.pre-node-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.pre-node-type {
+    font-size: 24rpx;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 4rpx;
+    display: block;
+}
+
+.pre-node-name {
+    font-size: 22rpx;
+    color: #666;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .picker-box.picker-disabled {

@@ -7,9 +7,18 @@
         <text class="card-title">{{ currentSchema.preNodeFieldName || '上级节点' }}</text>
       </view>
       <view class="form-item">
-        <view class="picker-box" @click="goToPreNodeSelect">
-          <text :class="prevId ? 'picker-text' : 'picker-placeholder'">
-            {{ preNodeDisplay || ('请选择' + (currentSchema.preNodeFieldName || '上级节点')) }}
+        <view class="pre-node-picker" @click="goToPreNodeSelect">
+          <view v-if="prevId" class="pre-node-info">
+            <view class="icon-box" :style="{ backgroundColor: themeColor }">
+              <image class="device-icon" :src="getPreNodeIcon()" mode="aspectFit"></image>
+            </view>
+            <view class="pre-node-content">
+              <text class="pre-node-type">{{ getPreNodeDeviceLabel() }}</text>
+              <text class="pre-node-name">{{ preNodeDisplay }}</text>
+            </view>
+          </view>
+          <text v-else class="picker-placeholder">
+            {{ '请选择' + (currentSchema.preNodeFieldName || '上级节点') }}
           </text>
           <text class="picker-arrow">›</text>
         </view>
@@ -78,6 +87,8 @@ import SchemaForm from '@/components/SchemaForm.vue'
 import { getSchema } from '@/schema/index.js'
 import deviceDAO from '@/dao/deviceDAO.js'
 import { haversineDistance } from '@/utils/common';
+import { themeColor } from '@/static/themeColor.js'
+import { getPinSvgUri } from '@/static/device_svgs.js';
 
 export default {
   components: { SchemaForm },
@@ -118,6 +129,7 @@ export default {
 
       // 上级节点选择
       preNodeDisplay: '',
+      themeColor,
 
       // 照片数据，结构：{ slotKey: filePath }
       photos: {}
@@ -235,6 +247,7 @@ export default {
             if (prevDevice) {
               this.prevLongitude = prevDevice.longitude || ''
               this.prevLatitude = prevDevice.latitude || ''
+              this.prevDeviceType = prevDevice.device_type || ''
             }
           } catch (e) {
             console.warn('加载上一设备失败:', e)
@@ -265,6 +278,7 @@ export default {
         )
         if (lastDevice) {
           this.prevId = lastDevice.id
+          this.prevDeviceType = lastDevice.device_type || ''
           this.sortOrder = (lastDevice.sort_order || 0) + 1
           this.prevLongitude = lastDevice.longitude || ''
           this.prevLatitude = lastDevice.latitude || ''
@@ -274,6 +288,7 @@ export default {
           }
         } else {
           this.prevId = ''
+          this.prevDeviceType = ''
           this.sortOrder = 1
         }
 
@@ -554,6 +569,7 @@ export default {
 
       this.prevId = data.id
       this.preNodeDisplay = data.name || ''
+      this.prevDeviceType = data.device_type || ''
       this.parentName = data.name || ''
 
       // 如果选择了上级节点，加载其坐标用于档距计算
@@ -564,6 +580,7 @@ export default {
             this.prevLongitude = prevDevice.longitude || ''
             this.prevLatitude = prevDevice.latitude || ''
             // 缓存上级节点类型和属性
+            this.prevDeviceType = prevDevice.device_type || ''
             this.prevDeviceType = prevDevice.device_type || ''
             const attrs = prevDevice.attributes
               ? (typeof prevDevice.attributes === 'string'
@@ -580,6 +597,7 @@ export default {
         this.prevLongitude = ''
         this.prevLatitude = ''
         this.prevDeviceType = ''
+        this.prevDeviceType = ''
         this.prevDeviceAttributes = null
         this.calcSpanLength()
       }
@@ -590,10 +608,22 @@ export default {
       }
     },
 
+    /** 获取上级节点图标 */
+    getPreNodeIcon() {
+      return getPinSvgUri(this.prevDeviceType)
+    },
+
+    /** 获取上级节点设备类型标签 */
+    getPreNodeDeviceLabel() {
+      const schema = getSchema(this.prevDeviceType)
+      return schema ? schema.label : this.prevDeviceType
+    },
+
     /** 加载上级节点显示名称 */
     async loadPreNodeDisplay() {
       if (!this.prevId) {
         this.preNodeDisplay = ''
+        this.prevDeviceType = ''
         this.prevDeviceType = ''
         this.prevDeviceAttributes = null
         return
@@ -602,6 +632,7 @@ export default {
         const device = await deviceDAO.findById(this.prevId)
         if (device) {
           this.preNodeDisplay = device.name || '未命名'
+          this.prevDeviceType = device.device_type || ''
           if (!this.parentName) {
             this.parentName = device.name || ''
           }
@@ -1034,6 +1065,63 @@ export default {
   background: #fff;
 }
 
+.pre-node-picker {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72rpx;
+  border: 1rpx solid #dcdfe6;
+  border-radius: 8rpx;
+  padding: 16rpx 20rpx;
+  background: #fff;
+  flex-wrap: wrap;
+}
+
+.pre-node-info {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  margin-right: 16rpx;
+}
+
+.icon-box {
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-right: 16rpx;
+  flex-shrink: 0;
+}
+
+.device-icon {
+  width: 30rpx;
+  height: 30rpx;
+}
+
+.pre-node-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.pre-node-type {
+  font-size: 24rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 4rpx;
+  display: block;
+}
+
+.pre-node-name {
+  font-size: 22rpx;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .picker-text {
   font-size: 28rpx;
   color: #333;
@@ -1042,6 +1130,7 @@ export default {
 .picker-placeholder {
   font-size: 28rpx;
   color: #c0c4cc;
+  flex: 1;
 }
 
 .picker-disabled {
@@ -1057,5 +1146,6 @@ export default {
 .picker-arrow {
   font-size: 32rpx;
   color: #c0c4cc;
+  flex-shrink: 0;
 }
 </style>

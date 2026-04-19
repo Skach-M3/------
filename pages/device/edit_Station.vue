@@ -1067,7 +1067,21 @@ export default {
             const opt = options[idx]
             if (opt === undefined) return
             const val = this.getOptValue(opt)
+            if (val === '其他') {
+                this.openSwitchgearCustomInput(field.key)
+                return
+            }
             this.updateSelectedSwitchgearField(field.key, val)
+        },
+
+        openSwitchgearCustomInput(fieldKey) {
+            this.customInputModal = {
+                visible: true,
+                fieldKey: fieldKey,
+                inputValue: '',
+                isMulti: false,
+                target: 'switchgear'
+            }
         },
 
         onCompositeInput(key, suffix) {
@@ -1328,21 +1342,27 @@ export default {
         },
 
         onConfirmCustomInput() {
-            const { fieldKey, inputValue, isMulti } = this.customInputModal
+            const { fieldKey, inputValue, isMulti, target } = this.customInputModal
             const val = (inputValue || '').trim()
             if (!val) {
                 uni.showToast({ title: '请输入内容', icon: 'none' })
                 return
             }
 
-            if (isMulti) {
-                if (!this.customValues[fieldKey]) this.customValues[fieldKey] = []
-                this.customValues[fieldKey].push(val)
-                const current = [...(this.attributes[fieldKey] || [])]
-                current.push(val)
-                this.attributes = { ...this.attributes, [fieldKey]: current }
+            if (target === 'switchgear') {
+                // 处理开关柜的自定义输入
+                this.updateSelectedSwitchgearField(fieldKey, val)
             } else {
-                this.attributes = { ...this.attributes, [fieldKey]: val }
+                // 处理站房的自定义输入
+                if (isMulti) {
+                    if (!this.customValues[fieldKey]) this.customValues[fieldKey] = []
+                    this.customValues[fieldKey].push(val)
+                    const current = [...(this.attributes[fieldKey] || [])]
+                    current.push(val)
+                    this.attributes = { ...this.attributes, [fieldKey]: current }
+                } else {
+                    this.attributes = { ...this.attributes, [fieldKey]: val }
+                }
             }
 
             this.customInputModal.visible = false

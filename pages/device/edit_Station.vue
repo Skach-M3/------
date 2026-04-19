@@ -136,6 +136,10 @@
                                                         <text class="layout-item-index">{{ rowIdx + 1 }}</text>
                                                         <text class="layout-item-name">{{ item.name || ''
                                                             }}</text>
+                                                        <view class="switch-status-indicator" :class="{
+                                                            'switch-status-on': item.switch_status === '合',
+                                                            'switch-status-off': item.switch_status === '分'
+                                                        }"></view>
                                                     </view>
                                                 </view>
                                             </view>
@@ -2099,6 +2103,24 @@ export default {
     color: #2979ff;
     font-weight: 600;
     margin-bottom: 12rpx;
+}
+
+/* 开关柜状态指示器样式 */
+.switch-status-indicator {
+    width: 12rpx;
+    height: 12rpx;
+    border-radius: 50%;
+    margin-left: 10rpx;
+}
+
+.switch-status-off {
+    background-color: #4CD964;
+    /* 绿色 - 分 */
+}
+
+.switch-status-on {
+    background-color: #FF3B30;
+    /* 红色 - 合 */
 }
 
 /* ===== 照片区域 ===== */

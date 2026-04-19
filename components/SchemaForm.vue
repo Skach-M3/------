@@ -278,7 +278,8 @@
       </view>
     </view>
     <!-- ===== 搜索选择弹窗 (选项>10时触发) ===== -->
-    <view v-if="searchSelectModal.visible" class="search-modal-mask" @click="closeSearchSelect">
+    <view v-if="searchSelectModal.visible" class="search-modal-mask" @click="closeSearchSelect"
+      @touchmove.stop.prevent="() => { }">
       <view class="search-modal-panel" @click.stop>
         <view class="search-modal-header">
           <text class="search-modal-title">请选择{{ searchSelectModal.label }}</text>

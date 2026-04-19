@@ -21,13 +21,19 @@
     <!-- 移动模式 - 中心设备标记 -->
     <view v-if="isMovingDevice" class="move-center-pin">
       <!-- 落点脉冲环 -->
-      <view class="move-pin-pulse"></view>
+      <view class="move-pin-pulse"
+        :style="{ borderColor: movingDeviceColor ? `rgba(${movingDeviceColor.r}, ${movingDeviceColor.g}, ${movingDeviceColor.b}, 0.8)` : 'rgba(59, 191, 251, 0.8)' }">
+      </view>
       <!-- 落点圆点 -->
-      <view class="move-pin-dot"></view>
+      <view class="move-pin-dot"
+        :style="{ background: movingDeviceColor ? `rgb(${movingDeviceColor.r}, ${movingDeviceColor.g}, ${movingDeviceColor.b})` : '#3bbffb' }">
+      </view>
       <!-- 标记主体：水滴 + 名称 -->
       <view class="move-pin-body">
         <view class="move-pin-head">
-          <view class="move-pin-teardrop"></view>
+          <view class="move-pin-teardrop"
+            :style="{ background: movingDeviceColor ? `rgb(${movingDeviceColor.r}, ${movingDeviceColor.g}, ${movingDeviceColor.b})` : '#3bbffb' }">
+          </view>
           <image v-if="movingDeviceIconUri" :src="movingDeviceIconUri" class="move-pin-icon" mode="aspectFit" />
         </view>
         <text class="move-pin-name">{{ movingDeviceOriginal?.name || '' }}</text>
@@ -543,6 +549,20 @@ const handleMove = () => {
 const movingDeviceIconUri = computed(() => {
   if (!movingDeviceOriginal.value) return '';
   return getPinSvgUri(movingDeviceOriginal.value.deviceType);
+});
+
+/** 计算移动设备的颜色（杆塔有子设备时为绿色，否则为蓝色） */
+const movingDeviceColor = computed(() => {
+  if (!movingDeviceOriginal.value) return null;
+  const device = movingDeviceOriginal.value;
+  if (device.deviceType === 'pole') {
+    // 检查是否有子设备
+    const hasChildren = devicesProp.value.some(d => d.parent_id === device.id);
+    return hasChildren ? { r: 3, g: 218, b: 107 } : { r: 59, g: 191, b: 251 };
+  } else {
+    // 其他设备类型默认蓝色
+    return { r: 59, g: 191, b: 251 };
+  }
 });
 
 interface MapConfig {
@@ -1068,6 +1088,19 @@ export default {
       // 构建设备ID到设备对象的映射，用于快速查找
       var deviceMap = {};
       var topLevelDevices = [];
+      // 收集每个设备的子设备信息
+      var childDevices = {};
+      
+      // 第一遍遍历：收集子设备信息
+      for (var i = 0; i < devices.length; i++) {
+        var device = devices[i];
+        if (device.parent_id && device.parent_id !== '') {
+          if (!childDevices[device.parent_id]) {
+            childDevices[device.parent_id] = [];
+          }
+          childDevices[device.parent_id].push(device.id);
+        }
+      }
     
       for (var i = 0; i < devices.length; i++) { 
         var device=devices[i];
@@ -1086,7 +1119,13 @@ export default {
         deviceMap[device.id].latlng = latlng; // 补充有效坐标
         var displayName=device.name || '未命名' ;
         var svgHtml=this.getDeviceSvg(device.device_type);
+        // 当设备类型为pole时，根据是否有子设备决定颜色：有子设备为绿色，否则为蓝色
         var color='#3bbffb';
+        if (device.device_type === 'pole') {
+          if (childDevices[device.id] && childDevices[device.id].length > 0) {
+            color = '#03da6b'; // 绿色
+          }
+        }
         // 倒水滴气泡容器 + 右侧文字
         var html = ''
           + '<div style="display:flex;align-items:flex-start;pointer-events:auto;">'

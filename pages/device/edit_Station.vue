@@ -789,7 +789,7 @@ export default {
 
         async initNewDevice() {
             try {
-                const lastDevice = await deviceDAO.findLastDevice(this.lineId, this.deviceType, this.parentId)
+                const lastDevice = await deviceDAO.findLastAvailablePreNode(this.lineId)
                 if (lastDevice) {
                     this.prevId = lastDevice.id
                     this.sortOrder = (lastDevice.sort_order || 0) + 1

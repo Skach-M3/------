@@ -255,15 +255,13 @@ export default {
 
     /**
      * 新建模式：
-     * 1. 查询同类型同父级下的最后一条记录，确定 prevId 和 sortOrder
+     * 1. 查询最后一条新建记录，确定 prevId 和 sortOrder
      * 2. 初始化空 attributes 并填入 schema 中定义的默认值
      */
     async initNewDevice() {
       try {
-        const lastDevice = await deviceDAO.findLastDevice(
-          this.lineId,
-          this.deviceType,
-          this.parentId
+        const lastDevice = await deviceDAO.findLastAvailablePreNode(
+          this.lineId
         )
         if (lastDevice) {
           this.prevId = lastDevice.id

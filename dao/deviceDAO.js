@@ -106,12 +106,34 @@ const deviceDAO = {
     /**
      * 查询指定线路 + 设备类型 + 父设备下，排序号最大的一条记录
      */
-    async findLastDevice(lineId, deviceType, parentId) {
+    async findLastDeviceByType(lineId, deviceType, parentId) {
         const sql = `SELECT * FROM t_device
       WHERE line_id = ? AND device_type = ? AND parent_id = ?
       ORDER BY sort_order DESC
       LIMIT 1`
         return await dbHelper.selectOne(sql, [lineId, deviceType, parentId || ''])
+    },
+
+    /**
+     * 查询指定线路下，最后新建的可以被选为上级节点的设备记录
+     * 如果最新设备不能作为上级节点，会继续往下找，直到找到为止
+     */
+    async findLastAvailablePreNode(lineId) {
+        const sql = `SELECT * FROM t_device
+      WHERE line_id = ?
+      ORDER BY created_at DESC`
+        const allDevices = await dbHelper.select(sql, [lineId])
+
+        // 遍历所有设备，按创建时间降序，找到第一个可以作为上级节点的设备
+        for (const device of allDevices) {
+            const schema = getSchema(device.device_type)
+            const isChildDevice = device.parent_id && device.parent_id !== ''
+            if (schema && schema.isAvailablePreNode === true && !isChildDevice) {
+                return device
+            }
+        }
+
+        return null
     },
 
     /**

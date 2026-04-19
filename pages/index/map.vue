@@ -722,7 +722,8 @@ const fabItems = [
   { name: '电缆拐点', deviceType: 'cable_turning_point' },
   { name: '变压器', deviceType: 'transformer' },
   { name: '计量信息', deviceType: 'meter' },
-  { name: '站房', deviceType: 'station' }
+  { name: '站房', deviceType: 'station' },
+  { name: '问题', deviceType: 'question' }
 ];
 
 const toggleFab = () => {
@@ -1175,7 +1176,8 @@ export default {
           latlng: latlng,
           prev_id: device.prev_id,
           parent_id: device.parent_id,
-          attributes: parsedAttrs
+          attributes: parsedAttrs,
+          device_type: device.device_type
         };
         
         // 仅顶层设备参与连线
@@ -1204,6 +1206,11 @@ export default {
           // 若 prev_id 指向子设备，自动上溯到其顶层父设备 
           var prevDevice = getTopLevelDevice(currentDevice.prev_id);
           if (!prevDevice) continue;
+          
+          // 当设备类型为question时，不绘制连线
+          if (currentDevice.device_type === 'question' || prevDevice.device_type === 'question') {
+            continue;
+          }
 
           var polyline = L.polyline([prevDevice.latlng, currentDevice.latlng], {
             color: '#03da6b',

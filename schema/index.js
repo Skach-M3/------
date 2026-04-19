@@ -13,6 +13,7 @@ import meterSchema from './meter.js'
 import stationSchema from './station.js'
 import stationSwitchgearSchema from './stationSwitchgear.js'
 import subStationSchema from './substation.js'
+import questionSchema from './question.js'
 
 const schemas = {
     pole: poleSchema,
@@ -23,6 +24,7 @@ const schemas = {
     station: stationSchema,
     station_switchgear: stationSwitchgearSchema,
     substation: subStationSchema,
+    question: questionSchema,
     // wire: wireSchema,
     // switch: switchSchema,
 }

@@ -91,9 +91,8 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue';
 import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app';
+import { TIANDITU_KEY } from '@/utils/getKey.js';
 
-// 填入您申请的天地图 Web API Key
-const TIANDITU_KEY = 'a30fe8f02deafbdc08192aa8f81c0044';
 
 // --- 数据接口定义 ---
 interface LocationInfo {

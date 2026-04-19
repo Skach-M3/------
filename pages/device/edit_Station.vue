@@ -372,6 +372,10 @@
             <button class="save-btn" @click="onSave">保存</button>
         </view>
     </view>
+
+    <!-- 水印绘制 canvas  -->
+    <canvas canvas-id="watermarkCanvas"
+        :style="{ width: canvasWidth + 'px', height: canvasHeight + 'px', position: 'fixed', left: '-9999px' }"></canvas>
 </template>
 
 <script>
@@ -381,10 +385,14 @@ import deviceDAO from '@/dao/deviceDAO.js'
 import { themeColor } from '@/static/themeColor.js'
 import { getPinSvgUri } from '@/static/device_svgs.js'
 import { getSchema } from '@/schema/index.js'
+import { TIANDITU_KEY } from '@/utils/getKey.js';
 
 export default {
     data() {
         return {
+            canvasWidth: 0,
+            canvasHeight: 0,
+            TIANDITU_KEY,
             // 路由参数
             lineId: '',
             lineName: '',
@@ -1430,6 +1438,7 @@ export default {
         /* ========== 照片处理 ========== */
         async onTakePhoto({ key, target = 'station' }) {
             try {
+                // 1. 调用相机
                 const chooseRes = await new Promise((resolve, reject) => {
                     uni.chooseImage({
                         count: 1,
@@ -1440,9 +1449,21 @@ export default {
                 })
                 const tempFilePath = chooseRes.tempFilePaths[0]
 
+                uni.showLoading({ title: '添加水印中...', mask: true })
+
+                // 2. 获取位置信息和当前时间
+                const [locationInfo, dateTime] = await Promise.all([
+                    this.getLocationAndAddress(),
+                    this.getCurrentDateTime()
+                ])
+
+                // 3. 给图片添加水印 (防闪退缩放版)
+                const watermarkedPath = await this.addWatermark(tempFilePath, locationInfo, dateTime)
+
+                // 4. 保存到持久化存储 (注意这里使用的是 watermarkedPath)
                 const saveRes = await new Promise((resolve, reject) => {
                     uni.saveFile({
-                        tempFilePath,
+                        tempFilePath: watermarkedPath,
                         success: resolve,
                         fail: reject
                     })
@@ -1450,11 +1471,18 @@ export default {
 
                 const savedPath = saveRes.savedFilePath
 
+                // 5. 根据 target 更新对应的数据状态 (这部分保留你原有的逻辑)
                 if (target === 'switchgear') {
-                    if (!this.selectedSwitchgear) return
+                    if (!this.selectedSwitchgear) {
+                        uni.hideLoading()
+                        return
+                    }
                     const { segIndex, rowIndex } = this.selectedSwitchgear
                     const layout = this.normalizeLayout(this.attributes.switchgear_layout)
-                    if (!layout[segIndex] || !layout[segIndex][rowIndex]) return
+                    if (!layout[segIndex] || !layout[segIndex][rowIndex]) {
+                        uni.hideLoading()
+                        return
+                    }
 
                     const row = { ...layout[segIndex][rowIndex] }
                     const oldPath = (row._photos || {})[key]
@@ -1469,12 +1497,131 @@ export default {
                     this.photos = { ...this.photos, [key]: savedPath }
                 }
 
+                uni.hideLoading()
                 uni.showToast({ title: '拍照成功', icon: 'success' })
             } catch (e) {
+                uni.hideLoading()
                 if (e && e.errMsg && e.errMsg.indexOf('cancel') > -1) return
-                console.error('拍照失败:', e)
-                uni.showToast({ title: '拍照失败', icon: 'none' })
+                console.error('拍照或添加水印失败:', e)
+                // uni.showToast({ title: '拍照失败', icon: 'none' })
             }
+        },
+
+        /** 给图片添加水印核心方法（带防闪退缩放与延时绘制） */
+        async addWatermark(imagePath, locationInfo, dateTime) {
+            return new Promise((resolve, reject) => {
+                uni.getImageInfo({
+                    src: imagePath,
+                    success: (image) => {
+                        const MAX_SIZE = 1280; // 设定最大边长防崩溃
+                        let targetWidth = image.width;
+                        let targetHeight = image.height;
+
+                        if (targetWidth > MAX_SIZE || targetHeight > MAX_SIZE) {
+                            if (targetWidth > targetHeight) {
+                                targetHeight = Math.round((targetHeight * MAX_SIZE) / targetWidth);
+                                targetWidth = MAX_SIZE;
+                            } else {
+                                targetWidth = Math.round((targetWidth * MAX_SIZE) / targetHeight);
+                                targetHeight = MAX_SIZE;
+                            }
+                        }
+
+                        this.canvasWidth = targetWidth;
+                        this.canvasHeight = targetHeight;
+
+                        setTimeout(() => {
+                            const ctx = uni.createCanvasContext('watermarkCanvas', this);
+                            ctx.drawImage(imagePath, 0, 0, targetWidth, targetHeight);
+
+                            const fontSize = Math.max(targetWidth / 30, 14);
+                            const padding = fontSize;
+                            ctx.setFontSize(fontSize);
+                            ctx.setFillStyle('white');
+                            ctx.setTextBaseline('bottom');
+                            ctx.setShadow(2, 2, 4, 'rgba(0, 0, 0, 0.8)');
+
+                            const textLine1 = `时间：${dateTime}`;
+                            const textLine2 = `经纬度：${locationInfo.lon}, ${locationInfo.lat}`;
+                            const textLine3 = `地点：${locationInfo.address}`;
+
+                            ctx.fillText(textLine3, padding, targetHeight - padding);
+                            ctx.fillText(textLine2, padding, targetHeight - padding - fontSize * 1.5);
+                            ctx.fillText(textLine1, padding, targetHeight - padding - fontSize * 3);
+
+                            ctx.draw(false, () => {
+                                setTimeout(() => {
+                                    uni.canvasToTempFilePath({
+                                        canvasId: 'watermarkCanvas',
+                                        destWidth: targetWidth,
+                                        destHeight: targetHeight,
+                                        success: (res) => resolve(res.tempFilePath),
+                                        fail: (err) => {
+                                            console.error('导出水印图片失败', err);
+                                            reject(err);
+                                        }
+                                    }, this);
+                                }, 300);
+                            });
+                        }, 100);
+                    },
+                    fail: (err) => {
+                        console.error('获取图片信息失败', err);
+                        reject(err);
+                    }
+                });
+            });
+        },
+
+        /** 获取位置及逆地理编码 */
+        getLocationAndAddress() {
+            return new Promise((resolve) => {
+                const defaultLoc = { lat: '未知', lon: '未知', address: '地址解析失败' }
+                uni.getLocation({
+                    type: 'wgs84',
+                    success: (res) => {
+                        const lat = res.latitude
+                        const lon = res.longitude
+                        const postStr = encodeURIComponent(JSON.stringify({ lon, lat, ver: 1 }))
+                        const url = `https://api.tianditu.gov.cn/geocoder?postStr=${postStr}&type=geocode&tk=${this.TIANDITU_KEY}`
+
+                        uni.request({
+                            url: url,
+                            method: 'GET',
+                            success: (geoRes) => {
+                                if (geoRes.data && geoRes.data.result) {
+                                    resolve({
+                                        lat: lat.toFixed(6),
+                                        lon: lon.toFixed(6),
+                                        address: geoRes.data.result.formatted_address || '未知详细地址'
+                                    })
+                                } else {
+                                    resolve({ lat: lat.toFixed(6), lon: lon.toFixed(6), address: '地址解析失败' })
+                                }
+                            },
+                            fail: () => {
+                                resolve({ lat: lat.toFixed(6), lon: lon.toFixed(6), address: '网络错误，地址解析失败' })
+                            }
+                        })
+                    },
+                    fail: (err) => {
+                        console.warn('获取定位失败:', err)
+                        resolve(defaultLoc)
+                    }
+                })
+            })
+        },
+
+        /** 获取当前格式化时间 */
+        getCurrentDateTime() {
+            const now = new Date()
+            const year = now.getFullYear()
+            const month = String(now.getMonth() + 1).padStart(2, '0')
+            const day = String(now.getDate()).padStart(2, '0')
+            const hours = String(now.getHours()).padStart(2, '0')
+            const minutes = String(now.getMinutes()).padStart(2, '0')
+            const seconds = String(now.getSeconds()).padStart(2, '0')
+            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
         },
 
         onPreviewPhoto({ filePath }) {

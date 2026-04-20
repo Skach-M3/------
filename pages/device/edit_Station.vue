@@ -68,7 +68,7 @@
                                 <!-- auto-fill（新增） -->
                                 <view v-else-if="field.type === 'auto-fill'" class="auto-calc-box">
                                     <text class="auto-calc-value">{{ attributes[field.key] || field.placeholder || '—'
-                                    }}</text>
+                                        }}</text>
                                 </view>
 
                                 <!-- composite-name -->
@@ -143,7 +143,7 @@
                                                             <text>-</text>
                                                         </view>
                                                         <text class="counter-value">{{ getSwitchgearCount(seg - 1)
-                                                            }}</text>
+                                                        }}</text>
                                                         <view class="counter-btn"
                                                             :class="{ 'counter-btn-disabled': !canCreateSwitchgear }"
                                                             @click="increaseCount(seg - 1)">
@@ -157,7 +157,7 @@
                                                         @click="onSelectSwitchgear(seg - 1, rowIdx)">
                                                         <text class="layout-item-index">{{ rowIdx + 1 }}</text>
                                                         <text class="layout-item-name">{{ item.name || ''
-                                                            }}</text>
+                                                        }}</text>
                                                         <view class="switch-status-indicator" :class="{
                                                             'switch-status-on': item.switch_status === '合',
                                                             'switch-status-off': item.switch_status === '分'
@@ -1315,7 +1315,18 @@ export default {
             const currentCount = Number(this.getSwitchgearCount(index)) || 0;
             // 最低为0
             if (currentCount > 0) {
-                this.onSwitchgearCountInput(index, currentCount - 1);
+                // 弹出确认框
+                uni.showModal({
+                    title: '删除开关柜',
+                    content: '确定要删除开关柜吗？',
+                    confirmText: '取消',
+                    cancelText: '确定',
+                    success: (res) => {
+                        if (res.cancel) {
+                            this.onSwitchgearCountInput(index, currentCount - 1);
+                        }
+                    }
+                });
             }
         },
 

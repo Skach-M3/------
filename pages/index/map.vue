@@ -16,7 +16,8 @@
       :change:showNamesProp="mapModule.onShowNamesChange" :movingDeviceIdProp="movingDeviceIdProp"
       :change:movingDeviceIdProp="mapModule.onMovingDeviceIdChange" :confirmMoveProp="confirmMoveProp"
       :change:confirmMoveProp="mapModule.onConfirmMoveChange" :blinkDeviceIdProp="blinkDeviceIdProp"
-      :change:blinkDeviceIdProp="mapModule.onBlinkDeviceIdChange"></view>
+      :change:blinkDeviceIdProp="mapModule.onBlinkDeviceIdChange" :selectedDeviceIdProp="selectedDeviceIdProp"
+      :change:selectedDeviceIdProp="mapModule.onSelectedDeviceIdChange"></view>
 
     <!-- 移动模式 - 中心设备标记 -->
     <view v-if="isMovingDevice" class="move-center-pin">
@@ -194,6 +195,7 @@ import { getPinSvgUri } from '@/static/device_svgs.js';
 import { DEBUG_ENABLED, debugLocation, setDebugLocation, clearDebugLocation } from '@/utils/debug-location.js'
 const debugPanelOpen = ref(false)
 const debugMarkerProp = ref(null)
+const selectedDeviceIdProp = ref('')
 
 function onMapClickDebug(e) {
   if (!debugLocation.picking) return
@@ -684,6 +686,7 @@ const handleMapMessage = (data: any) => {
     // 点击了设备图标
     console.log('点击了设备:', data.device);
     const device = data.device;
+    selectedDeviceIdProp.value = String(data.device?.id || '');
 
     // 确定当前参考坐标（优先使用调试假定位）
     let refLat: number, refLng: number;
@@ -713,6 +716,8 @@ const handleMapMessage = (data: any) => {
     // 移动模式下忽略地图空白点击
     if (isMovingDevice.value) return;
     console.log(`点击坐标: ${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}`);
+    // 点击地图时，清空选中设备
+    selectedDeviceIdProp.value = '';
     // 点击地图时，关闭设备列表面板
     showDevicePanel.value = false;
     if (isFabOpen.value) {
@@ -890,7 +895,8 @@ export default {
       debugMarker: null, // DEBUG
       deviceMarkers: {}, // deviceId -> L.marker
       devicePolylines: {}, // deviceId -> [L.polyline, ...]
-      hiddenDeviceId: null // 当前被隐藏的设备ID
+      hiddenDeviceId: null, // 当前被隐藏的设备ID
+      selectedDeviceId: '', // 当前选中的设备ID（用于抬高 zIndex）
     }
   },
   mounted() {
@@ -1293,6 +1299,29 @@ export default {
             this.deviceSpanLabels[prevDevice.id].push(spanMarker);
           }
         }
+      }
+      // 重绘后恢复选中态对应的层级
+      this.applySelectedMarkerZIndex();
+    },
+
+    /** 监听选中设备变化，调整 marker 层级 */
+    onSelectedDeviceIdChange(newValue) {
+      this.selectedDeviceId = newValue ? String(newValue) : '';
+      this.applySelectedMarkerZIndex();
+    },
+    
+    /** 选中设备抬高 zIndex，取消选中恢复 */
+    applySelectedMarkerZIndex() {
+      // 先全部恢复默认
+      for (var id in this.deviceMarkers) {
+        if (this.deviceMarkers[id] && this.deviceMarkers[id].setZIndexOffset) {
+          this.deviceMarkers[id].setZIndexOffset(0);
+        }
+      }
+    
+      // 再抬高当前选中
+      if (this.selectedDeviceId && this.deviceMarkers[this.selectedDeviceId]) {
+        this.deviceMarkers[this.selectedDeviceId].setZIndexOffset(1000);
       }
     },
 

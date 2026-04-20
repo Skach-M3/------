@@ -7,7 +7,7 @@ export default {
     category: '10kV',
     nameField: 'device_name',
     children: [],
-    isAvailablePreNode: false,
+    isAvailablePreNode: true,
     isPreNodeEditable: true,
     preNodeFieldName: '上级节点',
 

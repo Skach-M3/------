@@ -127,12 +127,7 @@
                                     </view>
 
                                     <view v-else>
-                                        <view v-if="!canCreateSwitchgear" class="warning-capsule-wrapper">
-                                            <view class="warning-capsule">
-                                                请先保存站房，生成ID后再新建开关柜
-                                            </view>
-                                        </view>
-                                        <scroll-view scroll-x class="layout-scroll" v-if="canCreateSwitchgear">
+                                        <scroll-view scroll-x class="layout-scroll">
                                             <view class="layout-grid">
                                                 <view v-for="seg in busbarSegments" :key="seg" class="layout-col">
                                                     <view class="layout-col-title">{{ busbarLabels[seg - 1] }}段母线</view>
@@ -390,6 +385,7 @@ import { TIANDITU_KEY } from '@/utils/getKey.js';
 export default {
     data() {
         return {
+            isAutoSavingStation: false,
             canvasWidth: 0,
             canvasHeight: 0,
             TIANDITU_KEY,
@@ -1200,13 +1196,20 @@ export default {
         },
 
         /* ========== switchgear_layout ========== */
-        ensureStationSavedForSwitchgear() {
+        async ensureStationSavedForSwitchgear() {
             if (this.canCreateSwitchgear) return true
-            uni.showToast({
-                title: '请先保存站房（生成ID）后再新建开关柜',
-                icon: 'none'
-            })
-            return false
+            if (this.isAutoSavingStation) return false
+
+            this.isAutoSavingStation = true
+            try {
+                const ok = await this.onSave({
+                    stayAfterSave: true,
+                    successText: '站房已自动保存'
+                })
+                return !!ok
+            } finally {
+                this.isAutoSavingStation = false
+            }
         },
         normalizeLayout(layout) {
             if (!Array.isArray(layout)) return []
@@ -1279,8 +1282,8 @@ export default {
             return this.getSwitchgearList(segIndex).length
         },
 
-        onSwitchgearCountInput(segIndex, raw) {
-            if (!this.ensureStationSavedForSwitchgear()) return
+        async onSwitchgearCountInput(segIndex, raw) {
+            if (!(await this.ensureStationSavedForSwitchgear())) return
 
             const targetCount = Math.max(0, parseInt(raw || '0', 10) || 0)
             const layout = this.normalizeLayout(this.attributes.switchgear_layout)
@@ -1310,14 +1313,12 @@ export default {
             }
         },
 
-        increaseCount(index) {
-            if (!this.canCreateSwitchgear) return;
+        async increaseCount(index) {
             const currentCount = Number(this.getSwitchgearCount(index)) || 0;
-            this.onSwitchgearCountInput(index, currentCount + 1);
+            await this.onSwitchgearCountInput(index, currentCount + 1);
         },
 
         decreaseCount(index) {
-            if (!this.canCreateSwitchgear) return;
             const currentCount = Number(this.getSwitchgearCount(index)) || 0;
             // 最低为0
             if (currentCount > 0) {
@@ -1865,14 +1866,16 @@ export default {
         },
 
         /* ========== 保存 ========== */
-        async onSave() {
+        async onSave(options = {}) {
+            const { stayAfterSave = false, successText = '保存成功' } = options
+
             this.ensureLayoutByBusbarCount()
             this.syncSwitchgearAutoFields()
 
             const errors = this.validate()
             if (errors.length > 0) {
                 uni.showToast({ title: errors[0], icon: 'none' })
-                return
+                return false
             }
 
             this.ensureLayoutByBusbarCount()
@@ -1919,13 +1922,18 @@ export default {
                     await this.syncSwitchgearToDB(stationId)
                 }
 
-                uni.showToast({ title: '保存成功', icon: 'success' })
-                setTimeout(() => { uni.navigateBack() }, 500)
+                uni.showToast({ title: successText, icon: 'none' })
+
+                if (!stayAfterSave) {
+                    setTimeout(() => { uni.navigateBack() }, 500)
+                }
+                return true
             } catch (e) {
                 console.error('保存失败:', e)
                 uni.showToast({ title: '保存失败', icon: 'none' })
+                return false
             }
-        }
+        },
     }
 }
 </script>
@@ -2732,24 +2740,5 @@ export default {
 .modal-btn-text-primary {
     color: #2979ff;
     font-weight: 600;
-}
-
-.warning-capsule-wrapper {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 16px;
-}
-
-.warning-capsule {
-    background-color: rgba(239, 68, 68, 0.1);
-    /* 半透明红色背景 */
-    color: #ef4444;
-    /* 红色文字 */
-    font-size: 14px;
-    /* text-sm */
-    padding: 6px 16px;
-    /* 上下左右内边距撑开胶囊 */
-    border-radius: 9999px;
-    /* 胶囊圆角 */
 }
 </style>

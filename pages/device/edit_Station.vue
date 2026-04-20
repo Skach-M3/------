@@ -482,7 +482,7 @@ export default {
             return groups
         },
         compositePrefix() {
-            return this.lineName ? `${this.lineName}#` : ''
+            return this.lineName ? `${this.lineName}` : ''
         },
         compositeNameField() {
             return this.currentSchema?.fields?.find(f => f.type === 'composite-name')
@@ -490,9 +490,14 @@ export default {
         compositeSuffix() {
             const field = this.compositeNameField
             if (!field) return ''
-            const value = this.attributes[field.key] || ''
-            const hashIndex = value.indexOf('#')
-            if (hashIndex !== -1) return value.substring(hashIndex + 1)
+
+            const value = String(this.attributes[field.key] || '')
+            const prefix = this.compositePrefix
+
+            // 线路名后直接接后缀
+            if (value.startsWith(prefix)) {
+                return value.substring(prefix.length)
+            }
             return value
         },
         allPhotoSlots() {
@@ -1148,8 +1153,9 @@ export default {
         },
 
         onCompositeInput(key, suffix) {
-            const prefix = this.compositePrefix
-            this.attributes = { ...this.attributes, [key]: prefix + suffix }
+            const prefix = this.compositePrefix || ''
+            const safeSuffix = String(suffix || '')
+            this.attributes = { ...this.attributes, [key]: prefix + safeSuffix }
 
             const stationNameKey = this.currentSchema?.nameField
             if (stationNameKey && key === stationNameKey) {

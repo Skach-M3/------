@@ -417,7 +417,7 @@ export default {
       });
     },
     compositePrefix() {
-      return this.lineName ? `${this.lineName}#` : ''
+      return this.lineName ? `${this.lineName}` : ''
     },
     // 动态获取 composite-name 类型字段
     compositeNameField() {
@@ -426,11 +426,17 @@ export default {
     compositeSuffix() {
       const field = this.compositeNameField
       if (!field) return ''
-      const value = this.modelValue[field.key] || ''
-      const hashIndex = value.indexOf('#')
-      if (hashIndex !== -1) {
-        return value.substring(hashIndex + 1)
+      const value = String(this.modelValue[field.key] || '')
+      const prefix = this.compositePrefix
+
+      if (!prefix) return value
+
+      // 线路名后直接接后缀
+      if (value.startsWith(prefix)) {
+        return value.substring(prefix.length)
       }
+
+      // 非标准情况，兜底显示完整值
       return value
     },
 

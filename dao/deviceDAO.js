@@ -300,29 +300,37 @@ const deviceDAO = {
     },
 
     /**
- * 修改线路名称后，批量更新该线路下所有包含旧线路名前缀的设备名称
- * 仅处理 name 格式为 "{lineName}#{suffix}" 的设备
- * @param {string} lineId     线路ID
- * @param {string} oldLineName 旧线路名称
- * @param {string} newLineName 新线路名称
- */
+     * 修改线路名称后，批量更新该线路下所有以旧线路名前缀开头的设备名称
+     * 处理 name 格式为 "{lineName}{suffix}"（无 #）
+     * 使用 LIKE ... ESCAPE '\\'，避免 oldLineName 中的 % / _ / \ 被当成通配符
+     *
+     * @param {string} lineId
+     * @param {string} oldLineName
+     * @param {string} newLineName
+     */
     async updateNamePrefixByLine(lineId, oldLineName, newLineName) {
         if (!oldLineName || oldLineName === newLineName) return
 
         const now = Date.now()
-        const oldPrefix = oldLineName + '#'
-        const newPrefix = newLineName + '#'
+        const oldPrefix = oldLineName
+        const newPrefix = newLineName
 
-        // SUBSTR 精准替换前缀部分，避免 REPLACE() 误改名称中间出现的同名字符串
+        // 转义 LIKE 特殊字符：\、%、_
+        const escapeLike = (s) =>
+            String(s).replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+
+        const likePattern = escapeLike(oldPrefix) + '%'
+
+        // 仅替换“开头前缀”，不会误替换中间同名片段
         const sql = `UPDATE t_device
         SET
-            name       = ? || SUBSTR(name, LENGTH(?) + 1),
+            name        = ? || SUBSTR(name, LENGTH(?) + 1),
             sync_status = 0,
             updated_at  = ?
         WHERE line_id = ?
-          AND name LIKE ?`
+          AND name LIKE ? ESCAPE '\\'`
 
-        await dbHelper.execute(sql, [newPrefix, oldPrefix, now, lineId, oldPrefix + '%'])
+        await dbHelper.execute(sql, [newPrefix, oldPrefix, now, lineId, likePattern])
     }
 }
 

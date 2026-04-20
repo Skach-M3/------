@@ -348,64 +348,61 @@ export default {
       // 根据设备类型应用不同的命名规则
       switch (this.deviceType) {
         case 'pole':
-          // 杆塔的命名规则
+          // 杆塔命名规则（无 #）：
+          // 直接在父节点名称中查找最后一个“杆”字前的数字并 +1，保持位数
           if (this.parentName) {
-            // 提取第一个"#"后面的内容（或整个 parentName）
-            const hashIndex = this.parentName.indexOf('#')
-            const namePart = hashIndex !== -1
-              ? this.parentName.substring(hashIndex + 1)
-              : this.parentName
+            const sourceName = String(this.parentName).trim()
+            // 匹配：前缀 + 数字 + 可选空格 + 杆（结尾）
+            const match = sourceName.match(/^(.*?)(\d+)\s*杆$/)
 
-            // 检查最后一个字是否是"杆"
-            const lastChar = namePart.charAt(namePart.length - 1)
-            if (lastChar === '杆') {
-              // 取"杆"字前的部分，移除空格后匹配数字
-              const beforePole = namePart.slice(0, -1).replace(/\s/g, '')
-              const match = beforePole.match(/(\d+)$/)
-              if (match) {
-                const numStr = match[1]
-                const nextNum = parseInt(numStr, 10) + 1
-                // 保持原有位数
-                const nextStr = String(nextNum).padStart(numStr.length, '0')
-                suffix = beforePole.slice(0, -numStr.length) + nextStr + '杆'
-              } else {
-                // 没有数字，直接填入父节点名
-                suffix = namePart
-              }
+            if (match) {
+              const prefix = match[1]
+              const numStr = match[2]
+              const nextNum = parseInt(numStr, 10) + 1
+              const nextStr = String(nextNum).padStart(numStr.length, '0')
+              suffix = `${prefix}${nextStr}杆`
             } else {
-              // 最后一个字不是"杆"，直接填入父节点名
-              suffix = namePart
+              // 未匹配到“数字+杆”则直接沿用父节点名称
+              suffix = sourceName
             }
+          } else {
+            // 没有父节点名时，至少给出线路名
+            suffix = this.lineName
           }
+
+          const finalName = suffix.startsWith(this.lineName)
+            ? suffix
+            : `${this.lineName}${suffix}`
+
           this.attributes = {
             ...this.attributes,
-            [nameField]: this.lineName + '#' + suffix
+            [nameField]: finalName
           }
           break
         case 'cable_turning_point':
           // 电缆拐点的命名规则
-          suffix = `C${this.sortOrder}`
+          suffix = ``
           this.attributes = {
             ...this.attributes,
-            [nameField]: this.lineName + '#' + suffix
+            [nameField]: this.lineName + '' + suffix
           }
           break
 
         case 'transformer':
           // 变压器的命名规则
-          suffix = `T${this.sortOrder}`
+          suffix = ``
           this.attributes = {
             ...this.attributes,
-            [nameField]: this.lineName + '#' + suffix
+            [nameField]: this.lineName + '' + suffix
           }
           break
 
         case 'substation':
           // 变电站的命名规则
-          suffix = `S${this.sortOrder}`
+          suffix = ``
           this.attributes = {
             ...this.attributes,
-            [nameField]: this.lineName + '#' + suffix
+            [nameField]: this.lineName + '' + suffix
           }
           break
 

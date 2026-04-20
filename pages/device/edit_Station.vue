@@ -2023,7 +2023,7 @@ export default {
 
 .section-header {
     padding: 0 0 16rpx 0;
-    margin-bottom: 8rpx;
+    margin-bottom: 0rpx;
     border-bottom: 1rpx solid #e5e5e5;
 }
 
@@ -2034,8 +2034,13 @@ export default {
 }
 
 .form-item {
-    padding: 20rpx 0;
+    padding: 22rpx 0;
     border-bottom: 1rpx solid #f0f0f0;
+
+    &:last-child {
+        border-bottom: none;
+        padding-bottom: 10rpx;
+    }
 }
 
 .form-label-row {
@@ -2046,8 +2051,8 @@ export default {
 }
 
 .form-label {
-    font-size: 28rpx;
-    color: #333;
+    font-size: 25rpx;
+    color: #666666;
 }
 
 .required-star {

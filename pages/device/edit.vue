@@ -155,7 +155,6 @@ export default {
     /** 子设备入口是否显示：需要主设备已保存（有 ID）且 schema 声明了 children */
     showChildren() {
       return !!(
-        this.deviceId &&
         this.currentSchema.children &&
         this.currentSchema.children.length > 0
       )
@@ -915,12 +914,14 @@ export default {
 
     /* ========== 保存 ========== */
 
-    async onSave() {
+    async onSave(options = {}) {
+      const { stayAfterSave = false, successText = '保存成功' } = options
+
       // 1. 表单校验
       const errors = this.$refs.formRef.validate()
       if (errors.length > 0) {
         uni.showToast({ title: errors[0], icon: 'none' })
-        return
+        return false
       }
 
       // 2. 从 schema.nameField 提取设备名称
@@ -958,34 +959,48 @@ export default {
       try {
         if (this.deviceId) {
           await deviceDAO.update(this.deviceId, deviceData)
-          uni.showToast({ title: '保存成功', icon: 'success' })
-          setTimeout(() => { uni.navigateBack() }, 500)
+          // uni.showToast({ title: successText, icon: 'none' })
+          if (!stayAfterSave) {
+            setTimeout(() => { uni.navigateBack() }, 500)
+          }
+          return true
         } else {
           const newId = await deviceDAO.insert(deviceData)
           this.deviceId = newId
-          uni.showToast({ title: '保存成功', icon: 'success' })
+          uni.showToast({ title: successText, icon: 'none' })
 
-          // ★ 新增判断：如果有子设备类型，保存后留在当前页，加载子设备区域
           if (this.currentSchema.children?.length > 0) {
-            // 更新标题为编辑模式
             uni.setNavigationBarTitle({
               title: '编辑' + this.currentSchema.label
             })
-            this.loadChildDevices()
-            // 不 navigateBack，让用户继续添加子设备
+            await this.loadChildDevices()
           }
-          setTimeout(() => { uni.navigateBack() }, 500)
+
+          if (!stayAfterSave) {
+            setTimeout(() => { uni.navigateBack() }, 500)
+          }
+          return true
         }
       } catch (e) {
         console.error('保存失败:', e)
         uni.showToast({ title: '保存失败', icon: 'none' })
+        return false
       }
     },
 
     /* ========== 子设备跳转 ========== */
 
     /** 添加子设备 —— 跳转到同一个 edit 页面 */
-    goAddChild(childType) {
+    async goAddChild(childType) {
+      // 无父节点ID时：先调用 onSave（含校验），失败则不允许添加子节点
+      if (!this.deviceId) {
+        const ok = await this.onSave({
+          stayAfterSave: true,
+          successText: '父节点已自动保存'
+        })
+        if (!ok) return
+      }
+
       const childSchema = getSchema(childType)
       const parentName = this.attributes[this.currentSchema.nameField] || ''
 
@@ -1024,7 +1039,7 @@ export default {
       uni.navigateTo({ url })
     },
 
-    /** ★ 新增：长按删除子设备 */
+    /** 长按删除子设备 */
     confirmDeleteChild(item, label) {
       uni.showModal({
         title: '删除确认',

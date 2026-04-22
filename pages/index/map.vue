@@ -453,13 +453,6 @@ const handleNavigate = () => {
       downloadUrl: platform === 'android'
         ? 'https://map.baidu.com/zt/client/index/'
         : 'https://apps.apple.com/cn/app/id452186370'
-    },
-    {
-      name: '腾讯地图',
-      url: `qqmap://map/routeplan?type=walk&to=${name}&tocoord=${lat},${lng}&coord_type=1&referer=lineCollect`,
-      downloadUrl: platform === 'android'
-        ? 'https://map.qq.com/mobile/index.html'
-        : 'https://apps.apple.com/cn/app/id481623196'
     }
   ];
 
@@ -490,8 +483,7 @@ const handleNavigate = () => {
   // #ifdef H5
   const h5MapList = [
     { name: '高德地图', url: `https://uri.amap.com/navigation?to=${lng},${lat},${name}&mode=walk&coordinate=wgs84` },
-    { name: '百度地图', url: `https://api.map.baidu.com/direction?destination=latlng:${lat},${lng}|name:${name}&coord_type=wgs84&mode=walking&output=html&src=lineCollect` },
-    { name: '腾讯地图', url: `https://apis.map.qq.com/uri/v1/routeplan?type=walk&to=${name}&tocoord=${lat},${lng}&coord_type=1&referer=lineCollect` }
+    { name: '百度地图', url: `https://api.map.baidu.com/direction?destination=latlng:${lat},${lng}|name:${name}&coord_type=wgs84&mode=walking&output=html&src=lineCollect` }
   ];
 
   uni.showActionSheet({

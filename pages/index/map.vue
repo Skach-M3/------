@@ -779,6 +779,13 @@ const handleFabClick = (item: any) => {
   } else {
     lat = mapConfig.center[0];
     lng = mapConfig.center[1];
+    const randomizeLast2 = (coord: number): number => {
+      const str = coord.toFixed(8);
+      const rand = String(Math.floor(Math.random() * 100)).padStart(2, '0');
+      return parseFloat(str.slice(0, -2) + rand);
+    };
+    lat = randomizeLast2(lat);
+    lng = randomizeLast2(lng);
   }
   // DEBUG END
   // 站房单独处理

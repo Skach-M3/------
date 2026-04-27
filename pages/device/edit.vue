@@ -353,25 +353,31 @@ export default {
       // 根据设备类型应用不同的命名规则
       switch (this.deviceType) {
         case 'pole':
-          // 杆塔命名规则（无 #）：
-          // 直接在父节点名称中查找最后一个“杆”字前的数字并 +1，保持位数
           if (this.parentName) {
             const sourceName = String(this.parentName).trim()
-            // 匹配：前缀 + 数字 + 可选空格 + 杆（结尾）
-            const match = sourceName.match(/^(.*?)(\d+)\s*杆$/)
 
-            if (match) {
-              const prefix = match[1]
-              const numStr = match[2]
+            // 规则1：末尾有"杆"字 → 提取杆前的数字 +1，保留"杆"
+            const matchWithPole = sourceName.match(/^(.*?)(\d+)\s*杆$/)
+            // 规则2：末尾无"杆"但以数字结尾 → 提取末尾数字 +1
+            const matchWithNum = sourceName.match(/^(.*?)(\d+)$/)
+
+            if (matchWithPole) {
+              const prefix = matchWithPole[1]
+              const numStr = matchWithPole[2]
               const nextNum = parseInt(numStr, 10) + 1
               const nextStr = String(nextNum).padStart(numStr.length, '0')
               suffix = `${prefix}${nextStr}杆`
+            } else if (matchWithNum) {
+              const prefix = matchWithNum[1]
+              const numStr = matchWithNum[2]
+              const nextNum = parseInt(numStr, 10) + 1
+              const nextStr = String(nextNum).padStart(numStr.length, '0')
+              suffix = `${prefix}${nextStr}`
             } else {
-              // 未匹配到“数字+杆”则直接沿用父节点名称
+              // 两种规则都不匹配，直接沿用父节点名称
               suffix = sourceName
             }
           } else {
-            // 没有父节点名时，至少给出线路名
             suffix = this.lineName
           }
 

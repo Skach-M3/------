@@ -68,7 +68,7 @@
                                 <!-- auto-fill（新增） -->
                                 <view v-else-if="field.type === 'auto-fill'" class="auto-calc-box">
                                     <text class="auto-calc-value">{{ attributes[field.key] || field.placeholder || '—'
-                                        }}</text>
+                                    }}</text>
                                 </view>
 
                                 <!-- composite-name -->
@@ -138,7 +138,7 @@
                                                             <text>-</text>
                                                         </view>
                                                         <text class="counter-value">{{ getSwitchgearCount(seg - 1)
-                                                        }}</text>
+                                                            }}</text>
                                                         <view class="counter-btn"
                                                             :class="{ 'counter-btn-disabled': !canCreateSwitchgear }"
                                                             @click="increaseCount(seg - 1)">
@@ -152,7 +152,7 @@
                                                         @click="onSelectSwitchgear(seg - 1, rowIdx)">
                                                         <text class="layout-item-index">{{ rowIdx + 1 }}</text>
                                                         <text class="layout-item-name">{{ item.name || ''
-                                                        }}</text>
+                                                            }}</text>
                                                         <view class="switch-status-indicator" :class="{
                                                             'switch-status-on': item.switch_status === '合',
                                                             'switch-status-off': item.switch_status === '分'
@@ -383,8 +383,12 @@ import { getSchema } from '@/schema/index.js'
 import { TIANDITU_KEY } from '@/utils/getKey.js';
 
 export default {
+    WATERMARK_CACHE_TTL: 60000,      // 60s
+    WATERMARK_WAIT_TIMEOUT: 800,     // 拍照时最长等待
     data() {
         return {
+            watermarkInfo: null,        // { lat, lon, address, fetchedAt }
+            watermarkInfoPromise: null, // 正在进行中的预取 Promise（防重复）
             isAutoSavingStation: false,
             canvasWidth: 0,
             canvasHeight: 0,
@@ -591,6 +595,8 @@ export default {
         } else {
             this.initNewDevice()
         }
+
+        this.prefetchWatermarkInfo()
     },
 
     methods: {
@@ -1467,18 +1473,16 @@ export default {
                 })
                 const tempFilePath = chooseRes.tempFilePaths[0]
 
-                uni.showLoading({ title: '添加水印中...', mask: true })
-
-                // 2. 获取位置信息和当前时间
+                // 2. 获取位置信息（优先用缓存）和当前时间
                 const [locationInfo, dateTime] = await Promise.all([
-                    this.getLocationAndAddress(),
+                    this.getWatermarkInfoForShot(),
                     this.getCurrentDateTime()
                 ])
 
                 // 3. 给图片添加水印 (防闪退缩放版)
                 const watermarkedPath = await this.addWatermark(tempFilePath, locationInfo, dateTime)
 
-                // 4. 保存到持久化存储 (注意这里使用的是 watermarkedPath)
+                // 4. 保存到持久化存储
                 const saveRes = await new Promise((resolve, reject) => {
                     uni.saveFile({
                         tempFilePath: watermarkedPath,
@@ -1489,18 +1493,12 @@ export default {
 
                 const savedPath = saveRes.savedFilePath
 
-                // 5. 根据 target 更新对应的数据状态 (这部分保留你原有的逻辑)
+                // 5. 根据 target 更新对应的数据状态
                 if (target === 'switchgear') {
-                    if (!this.selectedSwitchgear) {
-                        uni.hideLoading()
-                        return
-                    }
+                    if (!this.selectedSwitchgear) return
                     const { segIndex, rowIndex } = this.selectedSwitchgear
                     const layout = this.normalizeLayout(this.attributes.switchgear_layout)
-                    if (!layout[segIndex] || !layout[segIndex][rowIndex]) {
-                        uni.hideLoading()
-                        return
-                    }
+                    if (!layout[segIndex] || !layout[segIndex][rowIndex]) return
 
                     const row = { ...layout[segIndex][rowIndex] }
                     const oldPath = (row._photos || {})[key]
@@ -1515,10 +1513,8 @@ export default {
                     this.photos = { ...this.photos, [key]: savedPath }
                 }
 
-                uni.hideLoading()
                 uni.showToast({ title: '拍照成功', icon: 'success' })
             } catch (e) {
-                uni.hideLoading()
                 if (e && e.errMsg && e.errMsg.indexOf('cancel') > -1) return
                 console.error('拍照或添加水印失败:', e)
                 // uni.showToast({ title: '拍照失败', icon: 'none' })
@@ -1579,7 +1575,7 @@ export default {
                                             reject(err);
                                         }
                                     }, this);
-                                }, 300);
+                                }, 30);
                             });
                         }, 100);
                     },
@@ -1626,6 +1622,63 @@ export default {
                         console.warn('获取定位失败:', err)
                         resolve(defaultLoc)
                     }
+                })
+            })
+        },
+
+        /** 预取定位+逆地理编码并缓存，重复调用会复用进行中的 Promise */
+        prefetchWatermarkInfo() {
+            if (this.watermarkInfoPromise) {
+                return this.watermarkInfoPromise
+            }
+
+            const promise = this.getLocationAndAddress().then((info) => {
+                this.watermarkInfo = {
+                    ...info,
+                    fetchedAt: Date.now()
+                }
+                this.watermarkInfoPromise = null
+                return this.watermarkInfo
+            }).catch((e) => {
+                this.watermarkInfoPromise = null
+                throw e
+            })
+
+            this.watermarkInfoPromise = promise
+            return promise
+        },
+
+        /** 拍照时取水印信息：缓存有效直接用，否则触发预取并限时等待 */
+        getWatermarkInfoForShot() {
+            const TTL = this.$options.WATERMARK_CACHE_TTL
+            const TIMEOUT = this.$options.WATERMARK_WAIT_TIMEOUT
+            const info = this.watermarkInfo
+            const now = Date.now()
+
+            if (info && (now - info.fetchedAt) < TTL) {
+                return Promise.resolve(info)
+            }
+
+            const pending = this.watermarkInfoPromise || this.prefetchWatermarkInfo()
+
+            return new Promise((resolve) => {
+                let done = false
+                const timer = setTimeout(() => {
+                    if (done) return
+                    done = true
+                    resolve(info || { lat: '未知', lon: '未知', address: '地址解析失败' })
+                }, TIMEOUT)
+
+                pending.then((res) => {
+                    if (done) return
+                    done = true
+                    clearTimeout(timer)
+                    resolve(res)
+                }).catch(() => {
+                    if (done) return
+                    done = true
+                    clearTimeout(timer)
+                    resolve(info || { lat: '未知', lon: '未知', address: '地址解析失败' })
                 })
             })
         },

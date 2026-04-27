@@ -11,3 +11,7 @@ export function loginApi(data) {
         data
     });
 }
+
+// 鉴权检查（200 有效 / 401 无效）
+export const checkAuthApi = () =>
+    request({ url: '/api/auth/check', method: 'GET' })

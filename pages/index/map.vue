@@ -323,8 +323,6 @@ const onConfirmMoveResult = async (centerData: { lat: number; lng: number }) => 
   const newLng = centerData.lng;
   const newLat = centerData.lat;
 
-  console.log(`确认移动设备 ${deviceId} → [${newLng.toFixed(6)}, ${newLat.toFixed(6)}]`);
-
   try {
     // 更新本地数据库坐标
     await deviceDAO.updateCoordinates(deviceId, String(newLng), String(newLat));
@@ -648,7 +646,7 @@ const locateUser = () => {
 };
 
 const zoomIn = () => {
-  if (mapConfig.zoom < 18) {
+  if (mapConfig.zoom < 25) {
     mapConfig.zoom++;
     mapConfig.actionType = 'zoom';
     mapConfig.actionId++;
@@ -778,7 +776,6 @@ const handleFabClick = (item: any) => {
   if (DEBUG_ENABLED && debugLocation.lat !== null && debugLocation.lng !== null) {
     lat = debugLocation.lat;
     lng = debugLocation.lng;
-    console.log('[DEBUG] 新建设备使用假定位:', lat, lng);
   } else {
     lat = mapConfig.center[0];
     lng = mapConfig.center[1];
@@ -1402,8 +1399,8 @@ export default {
         ? `https://t0.tianditu.gov.cn/cva_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cva&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${tk}`
         : `https://t0.tianditu.gov.cn/cia_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${tk}`;
 
-      this.layers.base = L.tileLayer(layerUrl, { maxZoom: 18 }).addTo(this.map);
-      this.layers.label = L.tileLayer(labelUrl, { maxZoom: 18 }).addTo(this.map);
+      this.layers.base = L.tileLayer(layerUrl, { maxNativeZoom: 18,maxZoom: 25 }).addTo(this.map);
+      this.layers.label = L.tileLayer(labelUrl, { maxNativeZoom: 18,maxZoom: 25 }).addTo(this.map);
     },
     /** 监听闪烁指令：flyTo 动画结束后对设备名称执行红色闪烁 */
     onBlinkDeviceIdChange(newValue) {

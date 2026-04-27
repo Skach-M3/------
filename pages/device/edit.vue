@@ -104,8 +104,13 @@ import { TIANDITU_KEY } from '@/utils/getKey.js';
 export default {
   components: { SchemaForm },
 
+  WATERMARK_CACHE_TTL: 60000,      // 60s
+  WATERMARK_WAIT_TIMEOUT: 800,     // 拍照时最长等待
+
   data() {
     return {
+      watermarkInfo: null,        // { lat, lon, address, fetchedAt }
+      watermarkInfoPromise: null, // 正在进行中的预取 Promise（防重复）
       canvasWidth: 0,
       canvasHeight: 0,
       TIANDITU_KEY,
@@ -201,6 +206,7 @@ export default {
     } else {
       this.initNewDevice()
     }
+    this.prefetchWatermarkInfo();
   },
 
   // ★ 新增：每次页面显示时刷新子设备列表（从子设备编辑页返回时触发）
@@ -455,11 +461,9 @@ export default {
         })
         const tempFilePath = chooseRes.tempFilePaths[0]
 
-        uni.showLoading({ title: '添加水印中...', mask: true })
-
-        // 2. 获取位置信息和当前时间 (并行处理节省时间)
+        // 2. 获取位置信息（优先用缓存）和当前时间
         const [locationInfo, dateTime] = await Promise.all([
-          this.getLocationAndAddress(),
+          this.getWatermarkInfoForShot(),
           this.getCurrentDateTime()
         ])
 
@@ -486,10 +490,8 @@ export default {
         // 6. 更新照片数据
         this.photos = { ...this.photos, [key]: savedPath }
 
-        uni.hideLoading()
         uni.showToast({ title: '拍照成功', icon: 'success' })
       } catch (e) {
-        uni.hideLoading()
         // 用户取消拍照，不提示
         if (e && e.errMsg && e.errMsg.indexOf('cancel') > -1) return
         console.error('拍照或添加水印失败:', e)
@@ -552,7 +554,7 @@ export default {
 
               // 5. 渲染并导出
               ctx.draw(false, () => {
-                // 绘制完成后再稍微延时，确保底层渲染完毕，避免导出白图
+                // 绘制完成后稍微延时，确保底层渲染完毕，避免导出白图
                 setTimeout(() => {
                   uni.canvasToTempFilePath({
                     canvasId: 'watermarkCanvas',
@@ -566,7 +568,7 @@ export default {
                       reject(err);
                     }
                   }, this);
-                }, 300); // 300ms 延时
+                }, 30); // 30ms 延时
               });
             }, 100); // 100ms 等待 Canvas 尺寸更新
           },
@@ -616,6 +618,66 @@ export default {
             console.warn('获取定位失败:', err)
             resolve(defaultLoc)
           }
+        })
+      })
+    },
+
+    /** 预取定位+逆地理编码并缓存，重复调用会复用进行中的 Promise */
+    prefetchWatermarkInfo() {
+      if (this.watermarkInfoPromise) {
+        return this.watermarkInfoPromise
+      }
+
+      const promise = this.getLocationAndAddress().then((info) => {
+        this.watermarkInfo = {
+          ...info,
+          fetchedAt: Date.now()
+        }
+        this.watermarkInfoPromise = null
+        return this.watermarkInfo
+      }).catch((e) => {
+        this.watermarkInfoPromise = null
+        throw e
+      })
+
+      this.watermarkInfoPromise = promise
+      return promise
+    },
+
+    /** 拍照时取水印信息：缓存有效直接用，否则触发预取并限时等待 */
+    getWatermarkInfoForShot() {
+      const TTL = this.$options.WATERMARK_CACHE_TTL
+      const TIMEOUT = this.$options.WATERMARK_WAIT_TIMEOUT
+      const info = this.watermarkInfo
+      const now = Date.now()
+
+      // 缓存有效，直接返回
+      if (info && (now - info.fetchedAt) < TTL) {
+        return Promise.resolve(info)
+      }
+
+      // 缓存过期或不存在 → 触发预取（已在进行则复用）
+      const pending = this.watermarkInfoPromise || this.prefetchWatermarkInfo()
+
+      // 限时等待，超时用降级值
+      return new Promise((resolve) => {
+        let done = false
+        const timer = setTimeout(() => {
+          if (done) return
+          done = true
+          resolve(info || { lat: '未知', lon: '未知', address: '地址解析失败' })
+        }, TIMEOUT)
+
+        pending.then((res) => {
+          if (done) return
+          done = true
+          clearTimeout(timer)
+          resolve(res)
+        }).catch(() => {
+          if (done) return
+          done = true
+          clearTimeout(timer)
+          resolve(info || { lat: '未知', lon: '未知', address: '地址解析失败' })
         })
       })
     },

@@ -29,7 +29,6 @@ export default {
             label: '计量方式',
             group: '电表检查信息',
             type: 'select',
-            required: true,
             isCopyable: true,
             options: [
                 { label: '高供高计', value: '高供高计' },
@@ -303,8 +302,8 @@ export default {
     ],
 
     photoSlots: [
-        { key: 'metering_point_overview', label: '计量点全貌', required: true },
-        { key: 'meter_overview', label: '电表全貌', required: true },
+        { key: 'metering_point_overview', label: '计量点全貌', required: false },
+        { key: 'meter_overview', label: '电表全貌', required: false },
         { key: 'meter_front', label: '电表正面', required: false },
         { key: 'junction_box_front', label: '接线盒正面', required: false },
         { key: 'ct_overview', label: '互感器全貌', required: false },

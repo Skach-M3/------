@@ -28,7 +28,6 @@ export default {
             label: '拐点类型',
             group: '基础信息',
             type: 'select',
-            required: true,
             isCopyable: true,
             options: [
                 { label: '其他', value: '其他' },
@@ -214,7 +213,7 @@ export default {
     ],
 
     photoSlots: [
-        { key: 'overview', label: '全貌', required: true }
+        { key: 'overview', label: '全貌' }
     ],
     extraPhotoSlot: true
 }

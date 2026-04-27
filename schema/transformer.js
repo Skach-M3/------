@@ -29,7 +29,6 @@ export default {
             label: '使用性质',
             group: '基础信息',
             type: 'select',
-            required: true,
             isCopyable: true,
             options: [
                 { label: '其他', value: '其他' },
@@ -45,7 +44,6 @@ export default {
             label: '用电性质',
             group: '基础信息',
             type: 'select',
-            required: true,
             isCopyable: true,
             options: [
                 { label: '其他', value: '其他' },
@@ -68,7 +66,6 @@ export default {
             label: '设备类型',
             group: '基础信息',
             type: 'select',
-            required: true,
             isCopyable: true,
             options: [
                 { label: '其他', value: '其他' },
@@ -346,7 +343,7 @@ export default {
     ],
 
     photoSlots: [
-        { key: 'overview', label: '全貌', required: true },
+        { key: 'overview', label: '全貌', required: false },
         { key: 'front', label: '正面', required: false },
         { key: 'nameplate', label: '名称标识牌', required: false },
         { key: 'factory_plate', label: '出厂铭牌', required: false },

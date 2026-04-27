@@ -27,7 +27,6 @@ export default {
             label: '站房类型',
             group: '基础信息',
             type: 'select',
-            required: true,
             isCopyable: true,
             options: [
                 { label: '其他', value: '其他' },
@@ -77,7 +76,6 @@ export default {
             label: '母线数',
             group: '母线开关柜信息',
             type: 'select',
-            required: true,
             options: [
                 { label: '无母线', value: '0' },
                 { label: 'Ⅰ段', value: '1' },
@@ -233,7 +231,7 @@ export default {
     ],
 
     photoSlots: [
-        { key: 'front', label: '正面', required: true },
+        { key: 'front', label: '正面', required: false },
         { key: 'nameplate', label: '名称标识牌', required: false },
         { key: 'wiring_diagram', label: '站内一次接线图', required: false },
         { key: 'busbar_1_small_side', label: 'Ⅰ母小号侧', required: false },

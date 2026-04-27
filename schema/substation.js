@@ -26,7 +26,6 @@ export default {
             key: 'voltage_level',
             label: '电压等级',
             type: 'select',
-            required: true,
             options: [
                 { label: '6kV', value: '6kV' },
                 { label: '10kV', value: '10kV' },
@@ -91,7 +90,7 @@ export default {
 
     // ===== 照片 =====
     photoSlots: [
-        { key: 'full_view', label: '全貌', required: true }
+        { key: 'full_view', label: '全貌', required: false }
     ],
     extraPhotoSlot: true
 }

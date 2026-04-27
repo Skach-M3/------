@@ -30,7 +30,6 @@ export default {
             label: '开关柜名称',
             group: '基础信息',
             type: 'text',
-            required: true,
             placeholder: '请输入开关柜名称',
             exportOrder: 2,
             exportLabel: '开关柜名称'
@@ -68,7 +67,6 @@ export default {
             label: '开关柜类型',
             group: '基础信息',
             type: 'select',
-            required: true,
             options: [
                 { label: '其他', value: '其他' },
                 { label: '电源进线柜', value: '电源进线柜' },
@@ -86,7 +84,6 @@ export default {
             label: '开关状态',
             group: '基础信息',
             type: 'select',
-            required: true,
             options: [
                 { label: '分', value: '分' },
                 { label: '合', value: '合' },
@@ -145,7 +142,7 @@ export default {
 
     // ===== 照片 =====
     photoSlots: [
-        { key: 'full_view', label: '全貌', required: true }
+        { key: 'full_view', label: '全貌', required: false }
     ],
     extraPhotoSlot: false
 }

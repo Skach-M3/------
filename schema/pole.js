@@ -29,7 +29,6 @@ export default {
       label: '杆塔高 (m)',
       group: '基础信息',
       type: 'number',
-      required: true,
       isCopyable: true,
       placeholder: '请输入杆塔高度',
       exportOrder: 2,
@@ -40,7 +39,6 @@ export default {
       label: '杆塔材质',
       group: '基础信息',
       type: 'select',
-      required: true,
       isCopyable: true,
       options: [
         { label: '水泥杆', value: '水泥杆' },
@@ -58,7 +56,6 @@ export default {
       label: '杆塔性质',
       group: '基础信息',
       type: 'select',
-      required: true,
       isCopyable: true,
       options: [
         { label: '直线', value: '直线' },
@@ -386,7 +383,7 @@ export default {
   ],
 
   photoSlots: [
-    { key: 'overview', label: '全貌', required: true },
+    { key: 'overview', label: '全貌', required: false },
     { key: 'pole_head', label: '杆头', required: false },
     { key: 'nameplate', label: '铭牌', required: false },
     { key: 'wire_load', label: '导线负荷侧', required: false }

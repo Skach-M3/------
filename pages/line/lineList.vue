@@ -41,6 +41,7 @@
           <view class="card-actions">
             <view class="action-btn btn-delete" @click="handleDelete(item)">删除</view>
             <view class="action-btn btn-edit" @click="handleEdit(item)">编辑</view>
+            <view class="action-btn btn-export" @click="handleExport(item)">导出</view>
             <view class="action-btn btn-collect" @click="handleCollect(item)">进入采集</view>
           </view>
         </view>
@@ -63,6 +64,7 @@ import { ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { lineDAO } from '@/dao/lineDAO';
 import { themeColor, themeColorLight } from '@/static/themeColor.js';
+import { exportLine } from '@/utils/exportLine.js'
 
 // 搜索关键词
 const keyword = ref('');
@@ -103,6 +105,13 @@ onShow(() => {
 // 进入采集 → 跳转地图页
 const handleCollect = (item: any) => {
   uni.navigateTo({ url: `/pages/index/map?lineId=${item.id}&lineName=${encodeURIComponent(item.name)}` });
+};
+
+// 跳转到导出配置页
+const handleExport = (item: any) => {
+  uni.navigateTo({
+    url: `/pages/line/export?id=${item.id}&name=${encodeURIComponent(item.name || '')}`
+  });
 };
 
 // 编辑
@@ -269,6 +278,11 @@ const handleCreate = () => {
 
       &.btn-edit {
         background-color: #f5f5f5;
+        color: #333333;
+      }
+
+      &.btn-export {
+        background-color: #e6f7ff;
         color: #333333;
       }
 

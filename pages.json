@@ -16,6 +16,13 @@
 			}
 		},
 		{
+			"path": "pages/line/export",
+			"style": {
+				"navigationBarTitleText": "数据导出",
+				"navigationStyle": "custom"
+			}
+		},
+		{
 			"path": "pages/device/edit",
 			"style": {
 				"navigationBarTitleText": "填写设备信息",

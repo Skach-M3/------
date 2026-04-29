@@ -1,37 +1,26 @@
 // utils/exportLine.js
 import * as XLSX from 'xlsx'
-import JSZip from 'jszip'
 import { lineDAO } from '@/dao/lineDAO.js'
 import deviceDAO from '@/dao/deviceDAO.js'
 import { getSchema } from '@/schema/index.js'
 
 /** Sheet 排列顺序 */
 const SHEET_ORDER = [
-    'substation',          // 变电站
-    '__line__',            // 线路（占位，下方会单独插入）
-    'pole',                // 杆塔
-    'cable_turning_point', // 电缆拐点
-    'pole_switchgear',     // 柱上开关 / 附属设备
-    'transformer',         // 变压器
-    'meter',               // 计量
-    'station_room',        // 站房
-    'switchgear',          // 开关柜
-    'issue',               // 问题
+    'substation',
+    '__line__',
+    'pole',
+    'cable_turning_point',
+    'pole_switchgear',
+    'transformer',
+    'meter',
+    'station_room',
+    'switchgear',
+    'issue',
 ]
 
 /* ============================================================ */
 /*                          主入口                              */
 /* ============================================================ */
-/**
- * 导出一条线路的全部数据
- * @param {number|string} lineId
- * @param {Object} [options]
- * @param {string} [options.fileName]      自定义文件名(不含扩展名),同时作为子目录名
- * @param {boolean} [options.includePhotos=true]  是否打包照片 zip
- * @param {string} [options.baseDir]       保存根目录绝对路径
- * @returns {Promise<{excelPath:string, zipPath:string, dirPath:string, displayPath:string}>}
- */
-/** 主入口加日志 */
 export async function exportLine(lineId, options = {}) {
     const {
         fileName,
@@ -82,12 +71,10 @@ export async function exportLine(lineId, options = {}) {
     // === 文件名/目录名 ===
     const stamp = formatDateTimeForDir(Date.now())
     const safeLineName = sanitizeFilename(line.name || '线路')
-    // 用户传入的 fileName 优先;否则用 线路名_时间
     const finalFileName = fileName
         ? sanitizeFilename(fileName)
         : `${safeLineName}_${stamp}`
 
-    // 子目录与文件同名,便于一眼对应
     const folderName = finalFileName
     const absDir = `${baseDir}/${folderName}`
 
@@ -103,61 +90,24 @@ export async function exportLine(lineId, options = {}) {
     let zipAbs = ''
     if (includePhotos && photoFiles.length > 0) {
         console.log('[export] 11. 开始打包 zip,共', photoFiles.length, '张')
-        const zip = new JSZip()
-        const usedNames = new Set()
-        const total = photoFiles.length
-        let okCount = 0, idx = 0
-        for (const pf of photoFiles) {
-            idx++
-            if (idx % 5 === 0 || idx === total) {
-                uni.showLoading({ title: `打包照片 ${idx}/${total}`, mask: true })
-            }
-
-            let name = pf.exportName
-            if (usedNames.has(name)) {
-                const dot = name.lastIndexOf('.')
-                const base = dot > 0 ? name.substring(0, dot) : name
-                const ext = dot > 0 ? name.substring(dot) : ''
-                let i = 2
-                while (usedNames.has(`${base}(${i})${ext}`)) i++
-                name = `${base}(${i})${ext}`
-            }
-            usedNames.add(name)
-            try {
-                const data = await readFileAsArrayBuffer(pf.srcPath)
-                zip.file(name, data)
-                okCount++
-            } catch (e) {
-                console.warn('[export] 读取照片失败,跳过:', pf.srcPath, e)
-            }
-        }
-        console.log('[export] 12. 照片读取完成,成功=', okCount)
-
-        // ✅ 改用 base64,JSZip 必定支持
-        const zipB64 = await zip.generateAsync({
-            type: 'base64',
-            compression: 'STORE'
-        })
-        console.log('[export] 13. zip 生成完成,base64 长度=', zipB64.length)
-
         zipAbs = `${absDir}/${finalFileName}_照片.zip`
-
-        // ✅ 用 Android 原生写盘
-        await writeBase64ToFileAbs(zipAbs, zipB64)
-        console.log('[export] 14. zip 写入完成')
-
-        // 校验
+        try {
+            const okCount = await packPhotosToPublicZip(photoFiles, finalFileName, zipAbs)
+            console.log('[export] 12. 照片打包完成,成功=', okCount)
+        } catch (e) {
+            console.error('[export] 照片打包失败', e)
+            zipAbs = ''
+            throw e
+        }
+        notifyMediaScan(zipAbs)
         try {
             const realSize = await getFileSizeAbs(zipAbs)
-            console.log('[export] 14.1 落盘 zip 实际大小=', realSize)
-        } catch (e) {
-            console.warn('[export] 校验落盘大小失败', e)
-        }
+            console.log('[export] 13. 落盘 zip 实际大小=', realSize)
+        } catch (e) { /* ignore */ }
     } else if (!includePhotos) {
         console.log('[export] 11. 用户选择不导出照片,跳过 zip')
     }
 
-    // 计算用户友好显示路径
     const displayPath = baseDir.replace(/^\/storage\/emulated\/0\//, '手机存储/') + '/' + folderName
 
     const result = {
@@ -166,15 +116,119 @@ export async function exportLine(lineId, options = {}) {
         zipPath: zipAbs,
         displayPath
     }
-    console.log('[export] 15. 全部完成', result)
+    console.log('[export] 14. 全部完成', result)
     return result
+}
+
+/* ============================================================ */
+/*               照片打包(全程沙盒,最后 Java 拷出)             */
+/* ============================================================ */
+/**
+ * 流程:
+ *   1) _doc/__export_stage__/<folderName>/  作为沙盒暂存目录
+ *   2) 用 plus.io.copyTo 将每张照片(也在沙盒)按目标名复制进暂存
+ *   3) plus.zip.compress(暂存目录, _doc/__export_stage__/<folderName>.zip)
+ *   4) 用 Java FileChannel 把沙盒 zip 拷到公共 Download 目录
+ *   5) 清理沙盒里的暂存目录与 zip
+ */
+async function packPhotosToPublicZip(photoFiles, finalFileName, destZipAbs) {
+    // 1) 创建/重置沙盒暂存目录
+    const docEntry = await resolveURLPromise('_doc/')
+    const stageRoot = await getOrCreateDirEntry(docEntry, '__export_stage__')
+
+    // 旧目录残留先清掉
+    try {
+        const old = await getDirIfExists(stageRoot, finalFileName)
+        if (old) await removeRecursivelyEntry(old)
+    } catch (_) { }
+    const stageDir = await getOrCreateDirEntry(stageRoot, finalFileName)
+
+    // 同样把可能残留的旧 zip 删掉
+    const stageRelDir = `_doc/__export_stage__/${finalFileName}`
+    const sandboxZipRel = `_doc/__export_stage__/${finalFileName}.zip`
+    try {
+        const oldZip = await resolveURLPromise(sandboxZipRel)
+        await new Promise((res, rej) => oldZip.remove(res, rej))
+    } catch (_) { }
+
+    // 2) 逐张拷入暂存,处理重名
+    const usedNames = new Set()
+    const total = photoFiles.length
+    let okCount = 0, idx = 0
+    for (const pf of photoFiles) {
+        idx++
+        if (idx % 5 === 0 || idx === total) {
+            uni.showLoading({ title: `准备照片 ${idx}/${total}`, mask: true })
+        }
+        let name = pf.exportName
+        if (usedNames.has(name)) {
+            const dot = name.lastIndexOf('.')
+            const base = dot > 0 ? name.substring(0, dot) : name
+            const ext = dot > 0 ? name.substring(dot) : ''
+            let i = 2
+            while (usedNames.has(`${base}(${i})${ext}`)) i++
+            name = `${base}(${i})${ext}`
+        }
+        usedNames.add(name)
+
+        try {
+            await copyOnePhotoToSandbox(pf.srcPath, stageDir, stageRelDir, name)
+            okCount++
+        } catch (e) {
+            console.warn('[export] 拷贝照片失败,跳过:', pf.srcPath, e && e.message || e)
+        }
+    }
+
+    if (okCount === 0) {
+        try { await removeRecursivelyEntry(stageDir) } catch (_) { }
+        throw new Error('所有照片均拷贝失败')
+    }
+
+    // 3) 沙盒内压缩
+    uni.showLoading({ title: '正在压缩照片...', mask: true })
+    await compressPromise(stageRelDir, sandboxZipRel)
+    console.log('[export]    plus.zip.compress 完成 ->', sandboxZipRel)
+
+    // 4) 沙盒 zip → 公共目录(Java IO)
+    const sandboxZipAbs = sandboxRelToAbs(sandboxZipRel)
+    console.log('[export]    Java 拷贝', sandboxZipAbs, '->', destZipAbs)
+    await javaCopyFile(sandboxZipAbs, destZipAbs)
+
+    // 5) 清理沙盒
+    try { await removeRecursivelyEntry(stageDir) } catch (e) { console.warn('[export] 清理 stage 失败', e) }
+    try {
+        const zipEntry = await resolveURLPromise(sandboxZipRel)
+        await new Promise((res, rej) => zipEntry.remove(res, rej))
+    } catch (_) { }
+
+    return okCount
+}
+
+/** 单张照片拷入沙盒暂存(优先 plus.io.copyTo,失败回落 Java IO) */
+async function copyOnePhotoToSandbox(srcPath, stageDirEntry, stageRelDir, destName) {
+    // 先走 plus.io —— 沙盒到沙盒最稳
+    try {
+        const srcEntry = await resolveURLPromise(srcPath)
+        await copyToPromise(srcEntry, stageDirEntry, destName)
+        return
+    } catch (e1) {
+        // 兜底:Java IO 直接读源、写到沙盒目录
+        try {
+            const srcAbs = anyPathToAbs(srcPath)
+            const destAbs = `${sandboxRelToAbs(stageRelDir)}/${destName}`
+            await javaCopyFile(srcAbs, destAbs)
+            return
+        } catch (e2) {
+            throw new Error('copyTo 失败:' + (e1 && e1.message || JSON.stringify(e1)) +
+                ' | java 兜底失败:' + (e2 && e2.message || e2))
+        }
+    }
 }
 
 /* ============================================================ */
 /*                         Sheet 构建                            */
 /* ============================================================ */
 
-/** 线路 sheet */
 function addLineSheet(wb, line) {
     const aoa = [
         ['所属变电站', '线路名称', '归属单位', '采录人', '创建日期'],
@@ -190,23 +244,17 @@ function addLineSheet(wb, line) {
     XLSX.utils.book_append_sheet(wb, ws, '线路')
 }
 
-/** 设备 sheet */
 function addDeviceSheet(wb, schema, devices, line, idNameMap, photoFiles) {
-    // 1) 字段排序
     const sortedFields = (schema.fields || [])
         .slice()
         .sort((a, b) => (a.exportOrder || 9999) - (b.exportOrder || 9999))
 
-    // 2) 是否子设备:本组内有任何一条 parent_id 非空
     const isChildDevice = devices.some(d => d.parent_id && d.parent_id !== '')
-    // 是否顶级设备(变电站这种,既无 prev_id 也无 parent_id)
     const isTopLevel = schema.deviceType === 'substation'
 
-    // 3) 上级/所属节点列名
     const preNodeLabel = schema.preNodeFieldName ||
         (isChildDevice ? '所属设备' : '上级节点')
 
-    // 4) 计算最大照片列数
     let maxPhotos = (schema.photoSlots || []).length
     devices.forEach(d => {
         const attrs = parseAttrs(d.attributes)
@@ -215,7 +263,6 @@ function addDeviceSheet(wb, schema, devices, line, idNameMap, photoFiles) {
         if (total > maxPhotos) maxPhotos = total
     })
 
-    // 5) 表头
     const headers = []
     if (!isTopLevel) {
         if (!isChildDevice) headers.push('所属线路')
@@ -224,7 +271,6 @@ function addDeviceSheet(wb, schema, devices, line, idNameMap, photoFiles) {
     sortedFields.forEach(f => headers.push(f.exportLabel || f.label || f.key))
     for (let i = 0; i < maxPhotos; i++) headers.push('照片')
 
-    // 6) 数据行
     const rows = [headers]
     devices.forEach(d => {
         const attrs = parseAttrs(d.attributes)
@@ -250,14 +296,11 @@ function addDeviceSheet(wb, schema, devices, line, idNameMap, photoFiles) {
     })
 
     const ws = XLSX.utils.aoa_to_sheet(rows)
-    // sheet 名最长 31 字符,且不能含 /\?*[]:
     const sheetName = sanitizeSheetName(schema.label || schema.deviceType)
     XLSX.utils.book_append_sheet(wb, ws, sheetName)
 }
 
-/** 字段值格式化 */
 function formatFieldValue(field, value, device) {
-    // auto-calc 经纬度,若 attributes 内为空,回退到 device 主字段
     if (field.type === 'auto-calc') {
         if (value === undefined || value === null || value === '') {
             if (field.key === 'longitude') return device.longitude || ''
@@ -269,7 +312,6 @@ function formatFieldValue(field, value, device) {
     return String(value)
 }
 
-/** 收集照片文件名,同时把待打包文件加入 photoFiles */
 function collectPhotoNames(device, schema, attrs, photoFiles) {
     const photos = attrs._photos || {}
     const extraSlots = attrs._extraPhotoSlots || []
@@ -278,7 +320,6 @@ function collectPhotoNames(device, schema, attrs, photoFiles) {
     const dateStr = formatDate(device.updated_at || device.created_at || Date.now())
     const deviceName = sanitizeFilename(device.name || '未命名')
 
-        // 内置槽位
         ; (schema.photoSlots || []).forEach(slot => {
             const path = photos[slot.key]
             if (path) {
@@ -291,7 +332,6 @@ function collectPhotoNames(device, schema, attrs, photoFiles) {
             }
         })
 
-    // 自定义槽位
     extraSlots.forEach(slot => {
         const path = photos[slot.key]
         if (path) {
@@ -340,37 +380,6 @@ function getFileExt(path) {
     return m ? m[1].toLowerCase() : ''
 }
 
-/* ============================================================ */
-/*                      文件系统 (plus.io)                       */
-/* ============================================================ */
-
-/** 包装 plus.io.resolveLocalFileSystemURL 为 Promise，附超时 */
-function resolveURL(url, timeout = 8000) {
-    return new Promise((resolve, reject) => {
-        let done = false
-        const t = setTimeout(() => {
-            if (done) return
-            done = true
-            reject(new Error(`resolveLocalFileSystemURL 超时: ${url}`))
-        }, timeout)
-        plus.io.resolveLocalFileSystemURL(url,
-            (entry) => { if (done) return; done = true; clearTimeout(t); resolve(entry) },
-            (err) => { if (done) return; done = true; clearTimeout(t); reject(new Error(`resolve失败 ${url}: ${err && err.message || JSON.stringify(err)}`)) }
-        )
-    })
-}
-
-/** 创建/获取目录 */
-function getDir(parentEntry, name) {
-    return new Promise((resolve, reject) => {
-        parentEntry.getDirectory(name, { create: true, exclusive: false },
-            resolve,
-            (err) => reject(new Error(`getDirectory失败 ${name}: ${err && err.message || JSON.stringify(err)}`))
-        )
-    })
-}
-
-
 function arrayBufferToBase64(buffer) {
     const bytes = new Uint8Array(buffer)
     let binary = ''
@@ -381,163 +390,93 @@ function arrayBufferToBase64(buffer) {
     return btoa(binary)
 }
 
+/** 沙盒相对路径(_doc/...)→ 绝对路径 */
+function sandboxRelToAbs(rel) {
+    const url = plus.io.convertLocalFileSystemURL(rel) || ''
+    return String(url).replace(/^file:\/\//, '')
+}
+
+/** 任意路径(_doc/、file://、/storage/...)→ 绝对路径,给 Java 用 */
+function anyPathToAbs(p) {
+    if (!p) return p
+    let s = String(p)
+    if (s.charAt(0) === '/') return s
+    if (/^file:\/\//.test(s)) return s.replace(/^file:\/\//, '')
+    // 视为 _doc/ _downloads/ 等虚拟路径
+    return sandboxRelToAbs(s)
+}
+
+/** 通知系统媒体扫描 */
+function notifyMediaScan(absPath) {
+    try {
+        if (plus.os.name !== 'Android') return
+        const File = plus.android.importClass('java.io.File')
+        const Intent = plus.android.importClass('android.content.Intent')
+        const Uri = plus.android.importClass('android.net.Uri')
+        const main = plus.android.runtimeMainActivity()
+        const file = new File(absPath)
+        const intent = new Intent('android.intent.action.MEDIA_SCANNER_SCAN_FILE')
+        intent.setData(Uri.fromFile(file))
+        main.sendBroadcast(intent)
+    } catch (e) { /* 忽略 */ }
+}
+
 /* ============================================================ */
-/*                  读取本地文件 → ArrayBuffer                    */
+/*                        plus.io Promise                       */
 /* ============================================================ */
 
-/**
- * 通用文件读取:支持 _doc/、_downloads/、file://、/storage/、/sdcard/ 等
- * 通过 readAsDataURL 拿 base64,再转 ArrayBuffer,绕开二进制桥接的坑
- */
-function readFileAsArrayBuffer(path) {
+function resolveURLPromise(url) {
     return new Promise((resolve, reject) => {
-        if (!path) return reject(new Error('路径为空'))
-
-        // 统一一下 file:// 前缀(plus.io 不一定接受)
-        let url = String(path)
-        // 注意:_doc/ _downloads/ 等虚拟路径必须保留,不要前缀斜杠
-
-        const timer = setTimeout(() => {
-            reject(new Error('读取超时:' + url))
-        }, 30000)
-
-        plus.io.resolveLocalFileSystemURL(url, (entry) => {
-            entry.file((file) => {
-                const reader = new plus.io.FileReader()
-                reader.onloadend = (e) => {
-                    clearTimeout(timer)
-                    try {
-                        const dataUrl = e.target.result || ''
-                        // dataUrl 形如:data:image/png;base64,iVBORw0KGgo...
-                        const idx = dataUrl.indexOf('base64,')
-                        if (idx < 0) {
-                            return reject(new Error('readAsDataURL 返回格式异常'))
-                        }
-                        const b64 = dataUrl.substring(idx + 7)
-                        resolve(base64ToArrayBuffer(b64))
-                    } catch (err) {
-                        reject(new Error('解析 dataURL 失败:' + (err && err.message || err)))
-                    }
-                }
-                reader.onerror = (e) => {
-                    clearTimeout(timer)
-                    reject(new Error('FileReader 错误:' + JSON.stringify(e)))
-                }
-                // 关键:用 DataURL 而不是 ArrayBuffer
-                reader.readAsDataURL(file)
-            }, (err) => {
-                clearTimeout(timer)
-                reject(new Error('entry.file 失败:' + JSON.stringify(err)))
-            })
-        }, (err) => {
-            clearTimeout(timer)
-            reject(new Error('resolve 失败 ' + url + ':' + JSON.stringify(err)))
-        })
+        plus.io.resolveLocalFileSystemURL(url,
+            resolve,
+            (e) => reject(new Error('resolve失败 ' + url + ':' + (e && e.message || JSON.stringify(e))))
+        )
     })
 }
 
-/** base64 → ArrayBuffer (大文件分块,避免 atob 一次性过大) */
-function base64ToArrayBuffer(b64) {
-    const binary = atob(b64)
-    const len = binary.length
-    const bytes = new Uint8Array(len)
-    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i)
-    return bytes.buffer
-}
-
-
-/* ============================================================ */
-/*           Android 绝对路径写文件(Java File API)              */
-/* ============================================================ */
-
-/** 用 Java File 递归创建目录(同步) */
-function mkdirsAbs(absPath) {
-    if (plus.os.name !== 'Android') {
-        // iOS 简化处理:写文件时父目录会自动 create
-        return
-    }
-    const File = plus.android.importClass('java.io.File')
-    const dir = new File(absPath)
-    if (!dir.exists()) {
-        const ok = dir.mkdirs()
-        if (!ok) throw new Error('创建目录失败:' + absPath)
-    }
-}
-
-/** 用绝对路径写二进制文件(通过 base64 → Java byte[],避免有符号字节问题) */
-function writeBinaryFileAbs(absPath, arrayBuffer) {
+function getOrCreateDirEntry(parentEntry, name) {
     return new Promise((resolve, reject) => {
-        try {
-            if (plus.os.name !== 'Android') {
-                return reject(new Error('当前实现仅支持 Android'))
-            }
-            const File = plus.android.importClass('java.io.File')
-            const FileOutputStream = plus.android.importClass('java.io.FileOutputStream')
-            const Base64 = plus.android.importClass('android.util.Base64')
-
-            const file = new File(absPath)
-            // 父目录确保存在
-            const parent = file.getParentFile()
-            if (parent && !parent.exists()) parent.mkdirs()
-
-            // ArrayBuffer → base64 字符串(走 JS 端,不经过 java 桥的字节)
-            const b64 = arrayBufferToBase64(arrayBuffer)
-            // 在 Java 端解码为 byte[](Base64.DEFAULT = 0)
-            const bytes = Base64.decode(b64, 0)
-
-            const fos = new FileOutputStream(file)
-            fos.write(bytes)
-            fos.flush()
-            fos.close()
-
-            // 通知媒体扫描,文件管理器/微信立即可见
-            try {
-                const Intent = plus.android.importClass('android.content.Intent')
-                const Uri = plus.android.importClass('android.net.Uri')
-                const main = plus.android.runtimeMainActivity()
-                const intent = new Intent('android.intent.action.MEDIA_SCANNER_SCAN_FILE')
-                intent.setData(Uri.fromFile(file))
-                main.sendBroadcast(intent)
-            } catch (e) { /* 忽略 */ }
-
-            resolve(absPath)
-        } catch (e) {
-            reject(new Error('写文件异常:' + (e && e.message || e)))
-        }
+        parentEntry.getDirectory(name, { create: true, exclusive: false },
+            resolve,
+            (e) => reject(new Error('getDirectory失败 ' + name + ':' + (e && e.message || JSON.stringify(e))))
+        )
     })
 }
 
-/**
- * 把 base64 字符串以二进制形式写到绝对路径
- * Android: 用 android.util.Base64 + java.io.FileOutputStream,稳定且零拷贝开销
- */
-function writeBase64ToFileAbs(absPath, base64) {
+function getDirIfExists(parentEntry, name) {
+    return new Promise((resolve) => {
+        parentEntry.getDirectory(name, { create: false, exclusive: false },
+            resolve,
+            () => resolve(null)
+        )
+    })
+}
+
+function copyToPromise(srcEntry, destDirEntry, newName) {
     return new Promise((resolve, reject) => {
-        if (plus.os.name !== 'Android') {
-            return reject(new Error('writeBase64ToFileAbs 当前仅实现 Android'))
-        }
-        let fos = null
+        srcEntry.copyTo(destDirEntry, newName,
+            resolve,
+            (e) => reject(new Error('copyTo失败:' + (e && e.message || JSON.stringify(e))))
+        )
+    })
+}
+
+function removeRecursivelyEntry(dirEntry) {
+    return new Promise((resolve, reject) => {
+        dirEntry.removeRecursively(resolve, reject)
+    })
+}
+
+/** plus.zip.compress —— 注意 src/zipfile 必须是沙盒(_doc/、_downloads/ 等) */
+function compressPromise(srcRel, zipRel) {
+    return new Promise((resolve, reject) => {
         try {
-            const File = plus.android.importClass('java.io.File')
-            const FileOutputStream = plus.android.importClass('java.io.FileOutputStream')
-            const Base64 = plus.android.importClass('android.util.Base64')
-
-            // 确保父目录存在
-            const file = new File(absPath)
-            const parent = file.getParentFile()
-            if (parent && !parent.exists()) parent.mkdirs()
-            if (file.exists()) file['delete']()   // delete 是关键字,用方括号写法
-
-            // Base64.DEFAULT = 0
-            const bytes = Base64.decode(base64, 0)
-            fos = new FileOutputStream(absPath)
-            fos.write(bytes)
-            fos.flush()
-            resolve(absPath)
-        } catch (e) {
-            reject(new Error('原生写入失败:' + (e && e.message || e)))
-        } finally {
-            try { if (fos) fos.close() } catch (_) { }
+            plus.zip.compress(srcRel, zipRel,
+                () => resolve(zipRel),
+                (e) => reject(new Error('plus.zip.compress 失败:' + (e && e.message || JSON.stringify(e))))
+            )
+        } catch (err) {
+            reject(new Error('plus.zip.compress 异常:' + (err && err.message || err)))
         }
     })
 }
@@ -550,5 +489,173 @@ function getFileSizeAbs(absPath) {
         plus.io.resolveLocalFileSystemURL(url,
             (entry) => entry.file(f => resolve(f.size), reject),
             reject)
+    })
+}
+
+/* ============================================================ */
+/*                       Android 原生 IO                        */
+/* ============================================================ */
+
+/** 用 Java File 递归创建目录 */
+function mkdirsAbs(absPath) {
+    if (plus.os.name !== 'Android') return
+    const File = plus.android.importClass('java.io.File')
+    const dir = new File(absPath)
+    if (!dir.exists()) {
+        const ok = dir.mkdirs()
+        if (!ok) throw new Error('创建目录失败:' + absPath)
+    }
+}
+
+/** 写 Excel:ArrayBuffer → Java byte[] → 公共目录文件 */
+function writeBinaryFileAbs(absPath, arrayBuffer) {
+    return new Promise((resolve, reject) => {
+        try {
+            if (plus.os.name !== 'Android') {
+                return reject(new Error('当前实现仅支持 Android'))
+            }
+            const File = plus.android.importClass('java.io.File')
+            const FileOutputStream = plus.android.importClass('java.io.FileOutputStream')
+            const Base64 = plus.android.importClass('android.util.Base64')
+
+            const file = new File(absPath)
+            const parent = file.getParentFile()
+            if (parent && !parent.exists()) parent.mkdirs()
+
+            const b64 = arrayBufferToBase64(arrayBuffer)
+            const bytes = Base64.decode(b64, 0)
+
+            const fos = new FileOutputStream(file)
+            fos.write(bytes)
+            fos.flush()
+            fos.close()
+
+            notifyMediaScan(absPath)
+            resolve(absPath)
+        } catch (e) {
+            reject(new Error('写文件异常:' + (e && e.message || e)))
+        }
+    })
+}
+
+/**
+ * Java IO 拷贝(沙盒 → 公共目录,或反向均可)
+ * 优先 android.os.FileUtils.copy (API 29+,Android 10+ 必有)
+ * 退路 1: java.nio.file.Files.copy (API 26+)
+ * 退路 2: importClass 注入 FileChannel,再 transferTo
+ * 退路 3: 流式 read/write(单字节,极慢,仅小文件兜底)
+ */
+function javaCopyFile(srcAbs, destAbs) {
+    return new Promise((resolve, reject) => {
+        if (plus.os.name !== 'Android') {
+            return reject(new Error('javaCopyFile 仅支持 Android'))
+        }
+        let fis = null, fos = null
+        try {
+            const File = plus.android.importClass('java.io.File')
+            const FileInputStream = plus.android.importClass('java.io.FileInputStream')
+            const FileOutputStream = plus.android.importClass('java.io.FileOutputStream')
+
+            const srcFile = new File(srcAbs)
+            if (!srcFile.exists()) {
+                return reject(new Error('源文件不存在:' + srcAbs))
+            }
+            const destFile = new File(destAbs)
+            const parent = destFile.getParentFile()
+            if (parent && !parent.exists()) parent.mkdirs()
+            if (destFile.exists()) destFile['delete']()
+
+            fis = new FileInputStream(srcFile)
+            fos = new FileOutputStream(destFile)
+
+            let copied = false
+            let lastErr = null
+
+            // ===== 方式 1: android.os.FileUtils.copy (Android 10+ 推荐) =====
+            try {
+                const FileUtils = plus.android.importClass('android.os.FileUtils')
+                if (FileUtils && FileUtils.copy) {
+                    FileUtils.copy(fis, fos)
+                    copied = true
+                    console.log('[export]    javaCopyFile: 用 FileUtils.copy 完成')
+                }
+            } catch (e1) {
+                lastErr = e1
+                console.warn('[export]    FileUtils.copy 失败,尝试退路', e1 && e1.message || e1)
+            }
+
+            // ===== 方式 2: java.nio.file.Files.copy (API 26+) =====
+            if (!copied) {
+                try {
+                    const Files = plus.android.importClass('java.nio.file.Files')
+                    // Files.copy(InputStream, Path, CopyOption...) — 但路径/可变参不好搞
+                    // 改用 Files.copy(InputStream, OutputStream) 不存在;
+                    // 用 srcFile.toPath() + 目标 OutputStream
+                    const srcPath = srcFile.toPath()
+                    plus.android.importClass(srcPath)
+                    Files.copy(srcPath, fos)
+                    copied = true
+                    console.log('[export]    javaCopyFile: 用 Files.copy 完成')
+                } catch (e2) {
+                    lastErr = e2
+                    console.warn('[export]    Files.copy 失败,尝试退路', e2 && e2.message || e2)
+                }
+            }
+
+            // ===== 方式 3: FileChannel.transferTo,但要 importClass 注入方法 =====
+            if (!copied) {
+                try {
+                    const inCh = fis.getChannel()
+                    plus.android.importClass(inCh)   // 关键:把方法注入到这个对象
+                    const outCh = fos.getChannel()
+                    plus.android.importClass(outCh)
+                    const size = inCh.size()
+                    let transferred = 0
+                    const CHUNK = 8 * 1024 * 1024
+                    while (transferred < size) {
+                        const remain = size - transferred
+                        const cnt = remain > CHUNK ? CHUNK : remain
+                        const n = inCh.transferTo(transferred, cnt, outCh)
+                        if (n <= 0) break
+                        transferred += n
+                    }
+                    try { outCh.close() } catch (_) { }
+                    try { inCh.close() } catch (_) { }
+                    copied = true
+                    console.log('[export]    javaCopyFile: 用 FileChannel.transferTo 完成')
+                } catch (e3) {
+                    lastErr = e3
+                    console.warn('[export]    FileChannel 失败,尝试最后退路', e3 && e3.message || e3)
+                }
+            }
+
+            // ===== 方式 4: 流式逐字节(极慢,仅兜底) =====
+            if (!copied) {
+                try {
+                    let b
+                    while ((b = fis.read()) !== -1) {
+                        fos.write(b)
+                    }
+                    copied = true
+                    console.log('[export]    javaCopyFile: 用 单字节流 完成(慢)')
+                } catch (e4) {
+                    lastErr = e4
+                }
+            }
+
+            try { fos.flush() } catch (_) { }
+            try { fos.close() } catch (_) { }
+            try { fis.close() } catch (_) { }
+
+            if (!copied) {
+                return reject(new Error('Java 拷贝失败,所有方式均失败:' +
+                    (lastErr && lastErr.message || lastErr)))
+            }
+            resolve(destAbs)
+        } catch (e) {
+            try { if (fos) fos.close() } catch (_) { }
+            try { if (fis) fis.close() } catch (_) { }
+            reject(new Error('Java 拷贝失败:' + (e && e.message || e)))
+        }
     })
 }

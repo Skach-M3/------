@@ -123,7 +123,8 @@
         <view class="panel-actions">
           <view class="action-item" @click="handleNavigate">导航</view>
           <view class="action-item" @click="handleDetails">详情</view>
-          <view class="action-item no-border" @click="handleMove">移动</view>
+          <view class="action-item" @click="handleMove">移动</view>
+          <view class="action-item no-border delete-action" @click="handleDelete">删除</view>
         </view>
       </view>
     </view>
@@ -535,6 +536,46 @@ const handleMove = () => {
   mapConfig.center = [parseFloat(info.lat), parseFloat(info.lng)];
   mapConfig.actionType = 'flyTo';
   mapConfig.actionId++;
+};
+
+const handleDelete = () => {
+  const info = currentDeviceInfo.value;
+  if (!info.id) {
+    uni.showToast({ title: '设备信息异常', icon: 'none' });
+    return;
+  }
+
+  uni.showModal({
+    title: '确认删除',
+    content: `确定要删除设备"${info.name || '未知设备'}"及其子设备吗？`,
+    confirmText: '取消',
+    cancelText: '确定',
+    cancelColor: '#ff4d4f',
+    confirmColor: '#666666',
+    success: async (res) => {
+      if (!res.cancel) return;
+      try {
+        uni.showLoading({ title: '删除中...' });
+        await deviceDAO.deleteWithChildrenAndBreak(info.id);
+        uni.hideLoading();
+        uni.showToast({ title: '删除成功', icon: 'success' });
+
+        // 关闭面板 & 清除选中态
+        showDevicePanel.value = false;
+        selectedDeviceIdProp.value = '';
+        currentDeviceInfo.value = {
+          id: '', name: '', distance: '', lng: '', lat: '', deviceType: ''
+        };
+
+        // 重新加载 → RenderJS 自动重绘
+        await loadDevices();
+      } catch (err) {
+        uni.hideLoading();
+        console.error('删除设备失败:', err);
+        uni.showToast({ title: '删除失败，请重试', icon: 'none' });
+      }
+    }
+  });
 };
 
 /** 根据设备类型生成 SVG data URI，用于移动模式中心标记 */
@@ -1812,6 +1853,15 @@ export default {
 /* 最后一个按钮去掉右侧分割线 */
 .action-item.no-border {
   border-right: none;
+}
+
+.action-item.delete-action {
+  color: #ff4d4f;
+  font-weight: 500;
+}
+
+.action-item.delete-action:active {
+  background-color: rgba(255, 77, 79, 0.08);
 }
 
 /* 移动设备时的底部操作按钮容器 */

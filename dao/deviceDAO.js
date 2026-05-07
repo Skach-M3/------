@@ -288,6 +288,33 @@ const deviceDAO = {
     },
 
     /**
+     * 删除设备及其子设备，并清空所有指向它们的 prev_id（断开连线）
+     * @param {string} id 设备ID
+     */
+    async deleteWithChildrenAndBreak(id) {
+        // 1. 查询所有子设备ID
+        const children = await dbHelper.select(
+            'SELECT id FROM t_device WHERE parent_id = ?', [id]
+        )
+        const deletedIds = [id, ...children.map(c => c.id)]
+
+        // 2. 将所有 prev_id 指向这些被删除设备的记录，prev_id 置空 → 连线断开
+        const now = Date.now()
+        const placeholders = deletedIds.map(() => '?').join(',')
+        await dbHelper.execute(
+            `UPDATE t_device 
+         SET prev_id = '', sync_status = 0, updated_at = ?
+         WHERE prev_id IN (${placeholders})`,
+            [now, ...deletedIds]
+        )
+
+        // 3. 删除子设备
+        await dbHelper.execute('DELETE FROM t_device WHERE parent_id = ?', [id])
+        // 4. 删除自身
+        await dbHelper.execute('DELETE FROM t_device WHERE id = ?', [id])
+    },
+
+    /**
      * 删除设备（同时级联删除其子设备）
      */
     async deleteWithChildren(id) {

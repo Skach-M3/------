@@ -69,6 +69,22 @@ export default {
             exportOrder: 4,
             exportLabel: '电表加封锁'
         },
+        {
+            key: 'junction_box_box_seal',
+            label: '接线盒加封锁',
+            group: '电表检查信息',
+            type: 'select',
+            isCopyable: true,
+            options: [
+                { label: '其他', value: '其他' },
+                { label: '拆除重封锁', value: '拆除重封锁' },
+                { label: '拆除未封锁', value: '拆除未封锁' },
+                { label: '无盖', value: '无盖' },
+                { label: '无封锁', value: '无封锁' }
+            ],
+            exportOrder: 5,
+            exportLabel: '接线盒加封锁'
+        },
 
         {
             key: 'meter_install_location',
@@ -83,7 +99,7 @@ export default {
                 { label: '高压计量箱柜', value: '高压计量箱柜' },
                 { label: '低压计量箱柜', value: '低压计量箱柜' }
             ],
-            exportOrder: 5,
+            exportOrder: 6,
             exportLabel: '电表安装位置'
         },
         {
@@ -97,7 +113,7 @@ export default {
                 { label: '正常', value: '正常' },
                 { label: '螺丝松动', value: '螺丝松动' }
             ],
-            exportOrder: 6,
+            exportOrder: 7,
             exportLabel: '电表接线检查'
         },
         {
@@ -113,7 +129,7 @@ export default {
                 { label: '无接线盒直接入表', value: '无接线盒直接入表' },
                 { label: '有接线盒未经接线盒', value: '有接线盒未经接线盒' }
             ],
-            exportOrder: 7,
+            exportOrder: 8,
             exportLabel: '电表接线盒检查'
         },
         {
@@ -126,7 +142,7 @@ export default {
                 { label: '其他', value: '其他' },
                 { label: '正常', value: '正常' }
             ],
-            exportOrder: 8,
+            exportOrder: 9,
             exportLabel: '电表电压检查'
         },
         {
@@ -139,7 +155,7 @@ export default {
                 { label: '其他', value: '其他' },
                 { label: '正常', value: '正常' }
             ],
-            exportOrder: 9,
+            exportOrder: 10,
             exportLabel: '电表电流检查'
         },
         {
@@ -153,7 +169,7 @@ export default {
                 { label: '是', value: '是' },
                 { label: '否', value: '否' }
             ],
-            exportOrder: 10,
+            exportOrder: 11,
             exportLabel: '电表逆相序'
         },
         {
@@ -169,7 +185,7 @@ export default {
                 { label: '三象限左下', value: '三象限左下' },
                 { label: '四象限左上', value: '四象限左上' }
             ],
-            exportOrder: 11,
+            exportOrder: 12,
             exportLabel: '电表四象限'
         },
         {
@@ -183,7 +199,7 @@ export default {
                 { label: '全部检查', value: '全部检查' },
                 { label: '部分检查', value: '部分检查' }
             ],
-            exportOrder: 12,
+            exportOrder: 13,
             exportLabel: '电表检查情况'
         },
 
@@ -202,7 +218,7 @@ export default {
                 { label: 'JP计量柜内', value: 'JP计量柜内' },
                 { label: '变压器上桩头', value: '变压器上桩头' }
             ],
-            exportOrder: 13,
+            exportOrder: 14,
             exportLabel: '互感器安装位置'
         },
         {
@@ -212,7 +228,7 @@ export default {
             type: 'text',
             isCopyable: true,
             placeholder: '请输入互感器倍率',
-            exportOrder: 14,
+            exportOrder: 15,
             exportLabel: '互感器倍率'
         },
         {
@@ -225,7 +241,7 @@ export default {
                 { label: '其他', value: '其他' },
                 { label: '正常', value: '正常' }
             ],
-            exportOrder: 15,
+            exportOrder: 16,
             exportLabel: '互感器接线'
         },
         {
@@ -238,7 +254,7 @@ export default {
                 { label: '其他', value: '其他' },
                 { label: '正常', value: '正常' }
             ],
-            exportOrder: 16,
+            exportOrder: 17,
             exportLabel: '互感器外观'
         },
         {
@@ -252,7 +268,7 @@ export default {
                 { label: '全部检查', value: '全部检查' },
                 { label: '部分检查', value: '部分检查' }
             ],
-            exportOrder: 17,
+            exportOrder: 18,
             exportLabel: '互感器检查情况'
         },
 
@@ -264,7 +280,7 @@ export default {
             type: 'textarea',
             maxLength: 500,
             placeholder: '请输入备注',
-            exportOrder: 18,
+            exportOrder: 19,
             exportLabel: '备注1'
         },
         {
@@ -274,7 +290,7 @@ export default {
             type: 'textarea',
             maxLength: 500,
             placeholder: '请输入备注',
-            exportOrder: 19,
+            exportOrder: 20,
             exportLabel: '备注2'
         },
         {
@@ -285,7 +301,7 @@ export default {
             calcType: '',
             decimal: 8,
             editable: false,
-            exportOrder: 20,
+            exportOrder: 21,
             exportLabel: '经度'
         },
         {
@@ -296,7 +312,7 @@ export default {
             calcType: '',
             decimal: 8,
             editable: false,
-            exportOrder: 21,
+            exportOrder: 22,
             exportLabel: '纬度'
         }
     ],

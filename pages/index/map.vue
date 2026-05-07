@@ -1179,7 +1179,7 @@ export default {
           +   'flex-shrink:0;'
           +  '">' 
           +   '<!-- 倒水滴背景 -->'
-          +   '<div style="'
+          +   '<div class="device-pin-bg" style="'
           +    'position:absolute;top:0;left:0;width:100%;height:100%;'
           +    'background:' + color + ';'
           +    'border-radius:50% 50% 50% 0;'
@@ -1347,18 +1347,43 @@ export default {
       this.applySelectedMarkerZIndex();
     },
     
-    /** 选中设备抬高 zIndex，取消选中恢复 */
+    /** 选中设备抬高 zIndex 并加白色描边，取消选中恢复 */
     applySelectedMarkerZIndex() {
+      var DEFAULT_SHADOW = '-2px 2px 4px rgba(0,0,0,0.3)';
+      var SELECTED_SHADOW = '0 0 0 2px #fff, -2px 2px 6px rgba(0,0,0,0.4)';
+
       // 先全部恢复默认
       for (var id in this.deviceMarkers) {
-        if (this.deviceMarkers[id] && this.deviceMarkers[id].setZIndexOffset) {
-          this.deviceMarkers[id].setZIndexOffset(0);
+        var m = this.deviceMarkers[id];
+        if (!m) continue;
+        if (m.setZIndexOffset) m.setZIndexOffset(0);
+
+        var el = m.getElement ? m.getElement() : null;
+        if (el) {
+          var bg = el.querySelector('.device-pin-bg');
+          if (bg) bg.style.boxShadow = DEFAULT_SHADOW;
         }
       }
-    
-      // 再抬高当前选中
+
+      // 再应用选中态
       if (this.selectedDeviceId && this.deviceMarkers[this.selectedDeviceId]) {
-        this.deviceMarkers[this.selectedDeviceId].setZIndexOffset(1000);
+        var selMarker = this.deviceMarkers[this.selectedDeviceId];
+        if (selMarker.setZIndexOffset) selMarker.setZIndexOffset(1000);
+
+        var applyRing = function (marker) {
+          var selEl = marker.getElement ? marker.getElement() : null;
+          if (selEl) {
+            var selBg = selEl.querySelector('.device-pin-bg');
+            if (selBg) selBg.style.boxShadow = SELECTED_SHADOW;
+            return true;
+          }
+          return false;
+        };
+
+        if (!applyRing(selMarker)) {
+          // DOM 尚未挂载，延迟重试
+          setTimeout(function () { applyRing(selMarker); }, 200);
+        }
       }
     },
 

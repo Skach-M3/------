@@ -457,17 +457,26 @@ export default {
 
     /** 拍照（未拍照点击 / 重新拍照） */
     async onTakePhoto({ key, label }) {
+      let tempFilePath
       try {
-        // 1. 调用相机 —— 关键改动：使用 chooseMedia + sizeType: ['original']
-        const tempFilePath = await this.takeOriginalPhoto()
+        tempFilePath = await this.takeOriginalPhoto()
+      } catch (e) {
+        // 用户取消或相机失败，直接返回，不显示 loading
+        if (e && e.errMsg && e.errMsg.indexOf('cancel') > -1) return
+        console.error('相机调用失败:', e)
+        return
+      }
 
-        // 2. 获取位置信息（优先用缓存）和当前时间
+      uni.showLoading({ title: '处理中...', mask: true })
+
+      try {
+        // 2. 获取位置信息和当前时间
         const [locationInfo, dateTime] = await Promise.all([
           this.getWatermarkInfoForShot(),
           this.getCurrentDateTime()
         ])
 
-        // 3. 给图片添加水印
+        // 3. 添加水印
         const watermarkedPath = await this.addWatermark(tempFilePath, locationInfo, dateTime)
 
         // 4. 保存到持久化存储
@@ -481,7 +490,7 @@ export default {
 
         const savedPath = saveRes.savedFilePath
 
-        // 5. 如果是重新拍照，先删除旧文件
+        // 5. 删除旧文件
         const oldPath = this.photos[key]
         if (oldPath) {
           this.tryRemoveFile(oldPath)
@@ -490,12 +499,12 @@ export default {
         // 6. 更新照片数据
         this.photos = { ...this.photos, [key]: savedPath }
 
+        uni.hideLoading()   // 成功分支先关 loading
         uni.showToast({ title: '拍照成功', icon: 'success' })
       } catch (e) {
-        // 用户取消拍照，不提示
-        if (e && e.errMsg && e.errMsg.indexOf('cancel') > -1) return
-        console.error('拍照或添加水印失败:', e)
-        // uni.showToast({ title: '拍照失败', icon: 'none' })
+        uni.hideLoading()
+        console.error('添加水印或保存失败:', e)
+        uni.showToast({ title: '处理失败，请重试', icon: 'none' })
       }
     },
 
@@ -550,6 +559,7 @@ export default {
             let targetHeight = image.height
 
             // 只在极端情况（比如超过 4096）才限制，防止 canvas 崩溃
+            // 2560 基本是"看起来依然清晰、导出速度又快"的甜蜜点，1200 万 → 约 400 万像素，耗时直接砍掉 2/3。
             const HARD_LIMIT = 4096
             if (targetWidth > HARD_LIMIT || targetHeight > HARD_LIMIT) {
               if (targetWidth > targetHeight) {

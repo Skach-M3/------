@@ -390,8 +390,8 @@ export default {
             watermarkInfo: null,        // { lat, lon, address, fetchedAt }
             watermarkInfoPromise: null, // 正在进行中的预取 Promise（防重复）
             isAutoSavingStation: false,
-            canvasWidth: 0,
-            canvasHeight: 0,
+            canvasWidth: 300,
+            canvasHeight: 300,
             TIANDITU_KEY,
             // 路由参数
             lineId: '',
@@ -1460,18 +1460,148 @@ export default {
         },
 
         /* ========== 照片处理 ========== */
+        // async onTakePhoto({ key, target = 'station' }) {
+        //     try {
+        //         // 1. 调用相机
+        //         const chooseRes = await new Promise((resolve, reject) => {
+        //             uni.chooseImage({
+        //                 count: 1,
+        //                 sourceType: ['camera'],
+        //                 success: resolve,
+        //                 fail: reject
+        //             })
+        //         })
+        //         const tempFilePath = chooseRes.tempFilePaths[0]
+
+        //         // 2. 获取位置信息（优先用缓存）和当前时间
+        //         const [locationInfo, dateTime] = await Promise.all([
+        //             this.getWatermarkInfoForShot(),
+        //             this.getCurrentDateTime()
+        //         ])
+
+        //         // 3. 给图片添加水印 (防闪退缩放版)
+        //         const watermarkedPath = await this.addWatermark(tempFilePath, locationInfo, dateTime)
+
+        //         // 4. 保存到持久化存储
+        //         const saveRes = await new Promise((resolve, reject) => {
+        //             uni.saveFile({
+        //                 tempFilePath: watermarkedPath,
+        //                 success: resolve,
+        //                 fail: reject
+        //             })
+        //         })
+
+        //         const savedPath = saveRes.savedFilePath
+
+        //         // 5. 根据 target 更新对应的数据状态
+        //         if (target === 'switchgear') {
+        //             if (!this.selectedSwitchgear) return
+        //             const { segIndex, rowIndex } = this.selectedSwitchgear
+        //             const layout = this.normalizeLayout(this.attributes.switchgear_layout)
+        //             if (!layout[segIndex] || !layout[segIndex][rowIndex]) return
+
+        //             const row = { ...layout[segIndex][rowIndex] }
+        //             const oldPath = (row._photos || {})[key]
+        //             if (oldPath) this.tryRemoveFile(oldPath)
+
+        //             row._photos = { ...(row._photos || {}), [key]: savedPath }
+        //             layout[segIndex][rowIndex] = row
+        //             this.attributes = { ...this.attributes, switchgear_layout: layout }
+        //         } else {
+        //             const oldPath = this.photos[key]
+        //             if (oldPath) this.tryRemoveFile(oldPath)
+        //             this.photos = { ...this.photos, [key]: savedPath }
+        //         }
+
+        //         uni.showToast({ title: '拍照成功', icon: 'success' })
+        //     } catch (e) {
+        //         if (e && e.errMsg && e.errMsg.indexOf('cancel') > -1) return
+        //         console.error('拍照或添加水印失败:', e)
+        //         // uni.showToast({ title: '拍照失败', icon: 'none' })
+        //     }
+        // },
+
+        // /** 给图片添加水印核心方法（带防闪退缩放与延时绘制） */
+        // async addWatermark(imagePath, locationInfo, dateTime) {
+        //     return new Promise((resolve, reject) => {
+        //         uni.getImageInfo({
+        //             src: imagePath,
+        //             success: (image) => {
+        //                 const MAX_SIZE = 1280; // 设定最大边长防崩溃
+        //                 let targetWidth = image.width;
+        //                 let targetHeight = image.height;
+
+        //                 if (targetWidth > MAX_SIZE || targetHeight > MAX_SIZE) {
+        //                     if (targetWidth > targetHeight) {
+        //                         targetHeight = Math.round((targetHeight * MAX_SIZE) / targetWidth);
+        //                         targetWidth = MAX_SIZE;
+        //                     } else {
+        //                         targetWidth = Math.round((targetWidth * MAX_SIZE) / targetHeight);
+        //                         targetHeight = MAX_SIZE;
+        //                     }
+        //                 }
+
+        //                 this.canvasWidth = targetWidth;
+        //                 this.canvasHeight = targetHeight;
+
+        //                 setTimeout(() => {
+        //                     const ctx = uni.createCanvasContext('watermarkCanvas', this);
+        //                     ctx.drawImage(imagePath, 0, 0, targetWidth, targetHeight);
+
+        //                     const fontSize = Math.max(targetWidth / 30, 14);
+        //                     const padding = fontSize;
+        //                     ctx.setFontSize(fontSize);
+        //                     ctx.setFillStyle('white');
+        //                     ctx.setTextBaseline('bottom');
+        //                     ctx.setShadow(2, 2, 4, 'rgba(0, 0, 0, 0.8)');
+
+        //                     const textLine1 = `时间：${dateTime}`;
+        //                     const textLine2 = `经纬度：${locationInfo.lon}, ${locationInfo.lat}`;
+        //                     const textLine3 = `地点：${locationInfo.address}`;
+
+        //                     ctx.fillText(textLine3, padding, targetHeight - padding);
+        //                     ctx.fillText(textLine2, padding, targetHeight - padding - fontSize * 1.5);
+        //                     ctx.fillText(textLine1, padding, targetHeight - padding - fontSize * 3);
+
+        //                     ctx.draw(false, () => {
+        //                         setTimeout(() => {
+        //                             uni.canvasToTempFilePath({
+        //                                 canvasId: 'watermarkCanvas',
+        //                                 destWidth: targetWidth,
+        //                                 destHeight: targetHeight,
+        //                                 success: (res) => resolve(res.tempFilePath),
+        //                                 fail: (err) => {
+        //                                     console.error('导出水印图片失败', err);
+        //                                     reject(err);
+        //                                 }
+        //                             }, this);
+        //                         }, 30);
+        //                     });
+        //                 }, 100);
+        //             },
+        //             fail: (err) => {
+        //                 console.error('获取图片信息失败', err);
+        //                 reject(err);
+        //             }
+        //         });
+        //     });
+        // },
+
+
+        /** 拍照（未拍照点击 / 重新拍照） */
         async onTakePhoto({ key, target = 'station' }) {
             try {
-                // 1. 调用相机
-                const chooseRes = await new Promise((resolve, reject) => {
-                    uni.chooseImage({
-                        count: 1,
-                        sourceType: ['camera'],
-                        success: resolve,
-                        fail: reject
-                    })
-                })
-                const tempFilePath = chooseRes.tempFilePaths[0]
+                let tempFilePath
+                try {
+                    tempFilePath = await this.takeOriginalPhoto()
+                } catch (e) {
+                    // 用户取消或相机失败，直接返回，不显示 loading
+                    if (e && e.errMsg && e.errMsg.indexOf('cancel') > -1) return
+                    console.error('相机调用失败:', e)
+                    return
+                }
+
+                uni.showLoading({ title: '处理中...', mask: true })
 
                 // 2. 获取位置信息（优先用缓存）和当前时间
                 const [locationInfo, dateTime] = await Promise.all([
@@ -1479,7 +1609,7 @@ export default {
                     this.getCurrentDateTime()
                 ])
 
-                // 3. 给图片添加水印 (防闪退缩放版)
+                // 3. 给图片添加水印
                 const watermarkedPath = await this.addWatermark(tempFilePath, locationInfo, dateTime)
 
                 // 4. 保存到持久化存储
@@ -1513,78 +1643,149 @@ export default {
                     this.photos = { ...this.photos, [key]: savedPath }
                 }
 
+                uni.hideLoading()
                 uni.showToast({ title: '拍照成功', icon: 'success' })
             } catch (e) {
+                uni.hideLoading()
                 if (e && e.errMsg && e.errMsg.indexOf('cancel') > -1) return
                 console.error('拍照或添加水印失败:', e)
                 // uni.showToast({ title: '拍照失败', icon: 'none' })
             }
         },
 
-        /** 给图片添加水印核心方法（带防闪退缩放与延时绘制） */
-        async addWatermark(imagePath, locationInfo, dateTime) {
+        /**
+         * 调用系统相机拍照，返回原图临时路径
+         * 优先用 chooseMedia（更新、支持 sizeType），回退到 chooseImage
+         */
+        takeOriginalPhoto() {
+            return new Promise((resolve, reject) => {
+                // chooseMedia 在 App 和微信小程序都支持，拍出来的是原图
+                if (uni.chooseMedia) {
+                    uni.chooseMedia({
+                        count: 1,
+                        mediaType: ['image'],
+                        sourceType: ['camera'],
+                        sizeType: ['original'],   // 关键：原图，不压缩
+                        camera: 'back',
+                        success: (res) => {
+                            const file = res.tempFiles && res.tempFiles[0]
+                            if (file && file.tempFilePath) {
+                                resolve(file.tempFilePath)
+                            } else {
+                                reject(new Error('未获取到照片'))
+                            }
+                        },
+                        fail: reject
+                    })
+                    return
+                }
+
+                // 回退方案：chooseImage 必须指定 sizeType 为 original
+                uni.chooseImage({
+                    count: 1,
+                    sourceType: ['camera'],
+                    sizeType: ['original'],     // 关键：原图，不压缩
+                    success: (res) => resolve(res.tempFilePaths[0]),
+                    fail: reject
+                })
+            })
+        },
+
+        /** 给图片添加水印（App 端老 Canvas API 兼容版） */
+        addWatermark(imagePath, locationInfo, dateTime) {
             return new Promise((resolve, reject) => {
                 uni.getImageInfo({
                     src: imagePath,
                     success: (image) => {
-                        const MAX_SIZE = 1280; // 设定最大边长防崩溃
-                        let targetWidth = image.width;
-                        let targetHeight = image.height;
+                        console.log('照片分辨率：', image.width, 'x', image.height);
+                        // 1. 最大边长：2560 兼顾清晰度和性能。
+                        //    如果还是觉得糊可以提到 3200；如果偶发白图/崩溃就降到 2048。
+                        let targetWidth = image.width
+                        let targetHeight = image.height
 
-                        if (targetWidth > MAX_SIZE || targetHeight > MAX_SIZE) {
+                        // 只在极端情况（比如超过 4096）才限制，防止 canvas 崩溃
+                        const HARD_LIMIT = 4096
+                        if (targetWidth > HARD_LIMIT || targetHeight > HARD_LIMIT) {
                             if (targetWidth > targetHeight) {
-                                targetHeight = Math.round((targetHeight * MAX_SIZE) / targetWidth);
-                                targetWidth = MAX_SIZE;
+                                targetHeight = Math.round((targetHeight * HARD_LIMIT) / targetWidth)
+                                targetWidth = HARD_LIMIT
                             } else {
-                                targetWidth = Math.round((targetWidth * MAX_SIZE) / targetHeight);
-                                targetHeight = MAX_SIZE;
+                                targetWidth = Math.round((targetWidth * HARD_LIMIT) / targetHeight)
+                                targetHeight = HARD_LIMIT
                             }
                         }
 
-                        this.canvasWidth = targetWidth;
-                        this.canvasHeight = targetHeight;
+                        // 2. 同步更新 canvas 的 CSS 尺寸（非常关键）
+                        this.canvasWidth = targetWidth
+                        this.canvasHeight = targetHeight
 
-                        setTimeout(() => {
-                            const ctx = uni.createCanvasContext('watermarkCanvas', this);
-                            ctx.drawImage(imagePath, 0, 0, targetWidth, targetHeight);
+                        // 3. 等 canvas 节点尺寸真的变化后再画
+                        this.$nextTick(() => {
+                            setTimeout(() => {
+                                const ctx = uni.createCanvasContext('watermarkCanvas', this)
 
-                            const fontSize = Math.max(targetWidth / 30, 14);
-                            const padding = fontSize;
-                            ctx.setFontSize(fontSize);
-                            ctx.setFillStyle('white');
-                            ctx.setTextBaseline('bottom');
-                            ctx.setShadow(2, 2, 4, 'rgba(0, 0, 0, 0.8)');
+                                // 画原图
+                                ctx.drawImage(imagePath, 0, 0, targetWidth, targetHeight)
 
-                            const textLine1 = `时间：${dateTime}`;
-                            const textLine2 = `经纬度：${locationInfo.lon}, ${locationInfo.lat}`;
-                            const textLine3 = `地点：${locationInfo.address}`;
+                                // 4. 水印样式（按图宽等比缩放）
+                                const fontSize = Math.max(Math.round(targetWidth / 32), 32)
+                                const padding = Math.round(fontSize * 1.2)
+                                const lineGap = Math.round(fontSize * 1.4)
 
-                            ctx.fillText(textLine3, padding, targetHeight - padding);
-                            ctx.fillText(textLine2, padding, targetHeight - padding - fontSize * 1.5);
-                            ctx.fillText(textLine1, padding, targetHeight - padding - fontSize * 3);
+                                ctx.setFontSize(fontSize)
+                                ctx.setTextBaseline('bottom')
 
-                            ctx.draw(false, () => {
-                                setTimeout(() => {
-                                    uni.canvasToTempFilePath({
-                                        canvasId: 'watermarkCanvas',
-                                        destWidth: targetWidth,
-                                        destHeight: targetHeight,
-                                        success: (res) => resolve(res.tempFilePath),
-                                        fail: (err) => {
-                                            console.error('导出水印图片失败', err);
-                                            reject(err);
-                                        }
-                                    }, this);
-                                }, 30);
-                            });
-                        }, 100);
+                                // 用描边 + 填充代替 shadow，更稳定、更清晰
+                                ctx.setLineWidth(Math.max(Math.round(fontSize / 6), 2))
+                                ctx.setStrokeStyle('rgba(0, 0, 0, 0.85)')
+                                ctx.setFillStyle('#ffffff')
+
+                                const lines = [
+                                    `时间：${dateTime}`,
+                                    `经纬度：${locationInfo.lon}, ${locationInfo.lat}`,
+                                    `地点：${locationInfo.address}`
+                                ]
+
+                                // 从下往上画
+                                for (let i = 0; i < lines.length; i++) {
+                                    const text = lines[lines.length - 1 - i]
+                                    const y = targetHeight - padding - i * lineGap
+                                    ctx.strokeText(text, padding, y)
+                                    ctx.fillText(text, padding, y)
+                                }
+
+                                // 5. 渲染 + 导出
+                                ctx.draw(false, () => {
+                                    // 等底层渲染落盘，避免导出白图
+                                    setTimeout(() => {
+                                        uni.canvasToTempFilePath(
+                                            {
+                                                canvasId: 'watermarkCanvas',
+                                                width: targetWidth,
+                                                height: targetHeight,
+                                                destWidth: targetWidth,
+                                                destHeight: targetHeight,
+                                                fileType: 'jpg',
+                                                quality: 0.95,
+                                                success: (res) => resolve(res.tempFilePath),
+                                                fail: (err) => {
+                                                    console.error('导出水印图片失败', err)
+                                                    reject(err)
+                                                }
+                                            },
+                                            this
+                                        )
+                                    }, 100)
+                                })
+                            }, 150) // App 端尺寸同步相对慢，150ms 比较稳
+                        })
                     },
                     fail: (err) => {
-                        console.error('获取图片信息失败', err);
-                        reject(err);
+                        console.error('获取图片信息失败', err)
+                        reject(err)
                     }
-                });
-            });
+                })
+            })
         },
 
         /** 获取位置及逆地理编码 */

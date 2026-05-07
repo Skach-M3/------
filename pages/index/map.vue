@@ -1290,9 +1290,9 @@ export default {
           if (!prevDevice) continue;
           
           // 当设备类型为question时，不绘制连线
-          if (currentDevice.device_type === 'question' || prevDevice.device_type === 'question') {
-            continue;
-          }
+          // if (currentDevice.device_type === 'question' || prevDevice.device_type === 'question') {
+          //   continue;
+          // }
 
           var polyline = L.polyline([prevDevice.latlng, currentDevice.latlng], {
             color: '#03da6b',

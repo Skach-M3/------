@@ -68,7 +68,7 @@
                                 <!-- auto-fill（新增） -->
                                 <view v-else-if="field.type === 'auto-fill'" class="auto-calc-box">
                                     <text class="auto-calc-value">{{ attributes[field.key] || field.placeholder || '—'
-                                    }}</text>
+                                        }}</text>
                                 </view>
 
                                 <!-- composite-name -->
@@ -138,7 +138,7 @@
                                                             <text>-</text>
                                                         </view>
                                                         <text class="counter-value">{{ getSwitchgearCount(seg - 1)
-                                                            }}</text>
+                                                        }}</text>
                                                         <view class="counter-btn"
                                                             :class="{ 'counter-btn-disabled': !canCreateSwitchgear }"
                                                             @click="increaseCount(seg - 1)">
@@ -152,7 +152,7 @@
                                                         @click="onSelectSwitchgear(seg - 1, rowIdx)">
                                                         <text class="layout-item-index">{{ rowIdx + 1 }}</text>
                                                         <text class="layout-item-name">{{ item.name || ''
-                                                            }}</text>
+                                                        }}</text>
                                                         <view class="switch-status-indicator" :class="{
                                                             'switch-status-on': item.switch_status === '合',
                                                             'switch-status-off': item.switch_status === '分'
@@ -1155,7 +1155,9 @@ export default {
         },
 
         onCompositeInput(key, suffix) {
-            const prefix = this.compositePrefix || ''
+            // const prefix = this.compositePrefix || ''
+            // 不要线路前缀
+            const prefix = ''
             const safeSuffix = String(suffix || '')
             this.attributes = { ...this.attributes, [key]: prefix + safeSuffix }
 
@@ -2348,7 +2350,7 @@ export default {
     border-radius: 8rpx;
     padding: 16rpx 20rpx;
     font-size: 28rpx;
-    color: #333;
+    color: #333333c5;
     background: #f5f7fa;
     box-sizing: border-box;
 }

@@ -353,7 +353,7 @@ export default {
       // 根据设备类型应用不同的命名规则
       switch (this.deviceType) {
         case 'pole':
-          if (this.parentName) {
+          if (this.parentName && this.prevDeviceType === 'pole') {
             const sourceName = String(this.parentName).trim()
 
             // 规则1：末尾有"杆"字 → 提取杆前的数字 +1，保留"杆"
@@ -381,13 +381,13 @@ export default {
             suffix = this.lineName
           }
 
-          const finalName = suffix.startsWith(this.lineName)
-            ? suffix
-            : `${this.lineName}${suffix}`
+          // const finalName = suffix.startsWith(this.lineName)
+          //   ? suffix
+          //   : `${this.lineName}${suffix}`
 
           this.attributes = {
             ...this.attributes,
-            [nameField]: finalName
+            [nameField]: suffix
           }
           break
         case 'cable_turning_point':
@@ -395,7 +395,8 @@ export default {
           suffix = ``
           this.attributes = {
             ...this.attributes,
-            [nameField]: this.lineName + '' + suffix
+            // [nameField]: this.lineName + '' + suffix
+            [nameField]: suffix
           }
           break
 
@@ -404,7 +405,7 @@ export default {
           suffix = ``
           this.attributes = {
             ...this.attributes,
-            [nameField]: this.lineName + '' + suffix
+            [nameField]: suffix
           }
           break
 
@@ -413,7 +414,7 @@ export default {
           suffix = ``
           this.attributes = {
             ...this.attributes,
-            [nameField]: this.lineName + '' + suffix
+            [nameField]: suffix
           }
           break
 

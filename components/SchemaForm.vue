@@ -555,7 +555,9 @@ export default {
     },
 
     onCompositeInput(key, suffix) {
-      const prefix = this.compositePrefix
+      // const prefix = this.compositePrefix
+      // 不要线路前缀
+      const prefix = ''
       const newVal = { ...this.modelValue, [key]: prefix + suffix }
       this.clearInvalidDependents(key, newVal[key], newVal)
       this.emitUpdate(newVal)

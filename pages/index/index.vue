@@ -5,7 +5,7 @@
 			<view class="logo-box">
 				<image class="logo-img" src="/static/logo.svg" mode="aspectFit"></image>
 			</view>
-			<text class="app-title">现场采集工具</text>
+			<text class="app-title">现场作业</text>
 		</view>
 		<!-- 1. 顶部状态与信息区 (主题色 #006567) -->
 		<view class="header-section">

@@ -49,21 +49,23 @@ export async function exportLine(lineId, options = {}) {
 
     const wb = XLSX.utils.book_new()
     const photoFiles = []
+    const allFolders = new Set()   // 新增:收集所有设备类型文件夹名(schema.label)
 
     for (const type of SHEET_ORDER) {
         if (type === '__line__') { addLineSheet(wb, line); continue }
         if (!grouped[type]) continue
         const schema = getSchema(type)
         if (!schema) { delete grouped[type]; continue }
-        addDeviceSheet(wb, schema, grouped[type], line, idNameMap, photoFiles)
+        addDeviceSheet(wb, schema, grouped[type], line, idNameMap, photoFiles, allFolders)
         delete grouped[type]
     }
     Object.keys(grouped).forEach(type => {
         const schema = getSchema(type)
         if (!schema) return
-        addDeviceSheet(wb, schema, grouped[type], line, idNameMap, photoFiles)
+        addDeviceSheet(wb, schema, grouped[type], line, idNameMap, photoFiles, allFolders)
     })
-    console.log('[export] 5. workbook 构建完成,照片数=', photoFiles.length)
+    console.log('[export] 5. workbook 构建完成,照片数=', photoFiles.length,
+        ',分类文件夹=', Array.from(allFolders))
 
     const excelBuf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
     console.log('[export] 6. excel buffer 生成,size=', excelBuf.byteLength)
@@ -88,11 +90,15 @@ export async function exportLine(lineId, options = {}) {
     console.log('[export] 10. excel 写入完成')
 
     let zipAbs = ''
-    if (includePhotos && photoFiles.length > 0) {
-        console.log('[export] 11. 开始打包 zip,共', photoFiles.length, '张')
+    // 只要有分类文件夹(即有设备),就打 zip;哪怕没照片也会产生空目录的 zip
+    if (includePhotos && allFolders.size > 0) {
+        console.log('[export] 11. 开始打包 zip,共', photoFiles.length, '张照片,',
+            allFolders.size, '个分类文件夹')
         zipAbs = `${absDir}/${finalFileName}_照片.zip`
         try {
-            const okCount = await packPhotosToPublicZip(photoFiles, finalFileName, zipAbs)
+            const okCount = await packPhotosToPublicZip(
+                photoFiles, finalFileName, zipAbs, Array.from(allFolders)
+            )
             console.log('[export] 12. 照片打包完成,成功=', okCount)
         } catch (e) {
             console.error('[export] 照片打包失败', e)
@@ -106,6 +112,8 @@ export async function exportLine(lineId, options = {}) {
         } catch (e) { /* ignore */ }
     } else if (!includePhotos) {
         console.log('[export] 11. 用户选择不导出照片,跳过 zip')
+    } else {
+        console.log('[export] 11. 无设备类型,跳过 zip')
     }
 
     const displayPath = baseDir.replace(/^\/storage\/emulated\/0\//, '手机存储/') + '/' + folderName
@@ -131,7 +139,7 @@ export async function exportLine(lineId, options = {}) {
  *   4) 用 Java FileChannel 把沙盒 zip 拷到公共 Download 目录
  *   5) 清理沙盒里的暂存目录与 zip
  */
-async function packPhotosToPublicZip(photoFiles, finalFileName, destZipAbs) {
+async function packPhotosToPublicZip(photoFiles, finalFileName, destZipAbs, allFolders = []) {
     // 1) 创建/重置沙盒暂存目录
     const docEntry = await resolveURLPromise('_doc/')
     const stageRoot = await getOrCreateDirEntry(docEntry, '__export_stage__')
@@ -143,7 +151,7 @@ async function packPhotosToPublicZip(photoFiles, finalFileName, destZipAbs) {
     } catch (_) { }
     const stageDir = await getOrCreateDirEntry(stageRoot, finalFileName)
 
-    // 同样把可能残留的旧 zip 删掉
+    // 残留旧 zip 也清掉
     const stageRelDir = `_doc/__export_stage__/${finalFileName}`
     const sandboxZipRel = `_doc/__export_stage__/${finalFileName}.zip`
     try {
@@ -151,8 +159,19 @@ async function packPhotosToPublicZip(photoFiles, finalFileName, destZipAbs) {
         await new Promise((res, rej) => oldZip.remove(res, rej))
     } catch (_) { }
 
-    // 2) 逐张拷入暂存,处理重名
-    const usedNames = new Set()
+    // 1.5) 预先建好所有分类子目录(即使没照片也保留空目录)
+    const folderEntryMap = {}      // folder名 -> DirEntry
+    for (const f of allFolders) {
+        if (!f) continue
+        try {
+            folderEntryMap[f] = await getOrCreateDirEntry(stageDir, f)
+        } catch (e) {
+            console.warn('[export] 预建分类目录失败:', f, e && e.message || e)
+        }
+    }
+
+    // 2) 逐张拷入暂存,处理重名(按 folder 分别计重)
+    const usedNamesByFolder = {}   // folder -> Set(已用的文件名)
     const total = photoFiles.length
     let okCount = 0, idx = 0
     for (const pf of photoFiles) {
@@ -160,32 +179,55 @@ async function packPhotosToPublicZip(photoFiles, finalFileName, destZipAbs) {
         if (idx % 5 === 0 || idx === total) {
             uni.showLoading({ title: `准备照片 ${idx}/${total}`, mask: true })
         }
+
+        const folder = pf.folder || ''
+        if (!usedNamesByFolder[folder]) usedNamesByFolder[folder] = new Set()
+        const used = usedNamesByFolder[folder]
+
         let name = pf.exportName
-        if (usedNames.has(name)) {
+        if (used.has(name)) {
             const dot = name.lastIndexOf('.')
             const base = dot > 0 ? name.substring(0, dot) : name
             const ext = dot > 0 ? name.substring(dot) : ''
             let i = 2
-            while (usedNames.has(`${base}(${i})${ext}`)) i++
+            while (used.has(`${base}(${i})${ext}`)) i++
             name = `${base}(${i})${ext}`
         }
-        usedNames.add(name)
+        used.add(name)
+
+        // 解析目标目录:有 folder 则用对应子目录,否则放根
+        let targetDirEntry = stageDir
+        let targetRelDir = stageRelDir
+        if (folder) {
+            if (!folderEntryMap[folder]) {
+                try {
+                    folderEntryMap[folder] = await getOrCreateDirEntry(stageDir, folder)
+                } catch (e) {
+                    console.warn('[export] 创建分类目录失败:', folder, e && e.message || e)
+                }
+            }
+            if (folderEntryMap[folder]) {
+                targetDirEntry = folderEntryMap[folder]
+                targetRelDir = `${stageRelDir}/${folder}`
+            }
+        }
 
         try {
-            await copyOnePhotoToSandbox(pf.srcPath, stageDir, stageRelDir, name)
+            await copyOnePhotoToSandbox(pf.srcPath, targetDirEntry, targetRelDir, name)
             okCount++
         } catch (e) {
             console.warn('[export] 拷贝照片失败,跳过:', pf.srcPath, e && e.message || e)
         }
     }
 
-    if (okCount === 0) {
+    // 有照片但全失败才视为错误;0 张照片(纯空目录导出)是允许的
+    if (photoFiles.length > 0 && okCount === 0) {
         try { await removeRecursivelyEntry(stageDir) } catch (_) { }
         throw new Error('所有照片均拷贝失败')
     }
 
-    // 3) 沙盒内压缩
-    uni.showLoading({ title: '正在压缩照片...', mask: true })
+    // 3) 沙盒内打包
+    uni.showLoading({ title: '正在打包照片...', mask: true })
     await compressPromise(stageRelDir, sandboxZipRel)
     console.log('[export]    plus.zip.compress 完成 ->', sandboxZipRel)
 
@@ -203,6 +245,8 @@ async function packPhotosToPublicZip(photoFiles, finalFileName, destZipAbs) {
 
     return okCount
 }
+
+// plus.zip.compress 是否保留空目录，各 Android 版本实测一般都会保留。如果某台设备压完后发现空目录丢失，最省事的补丁是：在每个预建子目录里写一个占位文件（如 .keep）。届时告诉我，我再补一小段写占位文件的代码即可，不影响现在的改动。
 
 /** 单张照片拷入沙盒暂存(优先 plus.io.copyTo,失败回落 Java IO) */
 async function copyOnePhotoToSandbox(srcPath, stageDirEntry, stageRelDir, destName) {
@@ -244,7 +288,7 @@ function addLineSheet(wb, line) {
     XLSX.utils.book_append_sheet(wb, ws, '线路')
 }
 
-function addDeviceSheet(wb, schema, devices, line, idNameMap, photoFiles) {
+function addDeviceSheet(wb, schema, devices, line, idNameMap, photoFiles, allFolders) {
     const sortedFields = (schema.fields || [])
         .slice()
         .sort((a, b) => (a.exportOrder || 9999) - (b.exportOrder || 9999))
@@ -262,6 +306,11 @@ function addDeviceSheet(wb, schema, devices, line, idNameMap, photoFiles) {
         const total = (schema.photoSlots || []).length + extra
         if (total > maxPhotos) maxPhotos = total
     })
+
+    // 登记这一类设备的文件夹(即使此类没有任何照片,也会在 zip 中建空目录)
+    if (allFolders) {
+        allFolders.add(sanitizeFilename(schema.label || schema.deviceType))
+    }
 
     const headers = []
     if (!isTopLevel) {
@@ -317,6 +366,9 @@ function collectPhotoNames(device, schema, attrs, photoFiles) {
     const extraSlots = attrs._extraPhotoSlots || []
     const result = []
 
+    // 该设备对应的分类文件夹名(按设备类型划分)
+    const folder = sanitizeFilename(schema.label || schema.deviceType)
+
     const dateStr = formatDate(device.updated_at || device.created_at || Date.now())
     const deviceName = sanitizeFilename(device.name || '未命名')
 
@@ -325,8 +377,8 @@ function collectPhotoNames(device, schema, attrs, photoFiles) {
             if (path) {
                 const ext = getFileExt(path) || 'jpg'
                 const name = `${deviceName}+${slot.label}+${dateStr}.${ext}`
-                result.push(name)
-                photoFiles.push({ exportName: name, srcPath: path })
+                result.push(name)   // Excel 仍只写文件名
+                photoFiles.push({ exportName: name, srcPath: path, folder })
             } else {
                 result.push('')
             }
@@ -338,7 +390,7 @@ function collectPhotoNames(device, schema, attrs, photoFiles) {
             const ext = getFileExt(path) || 'jpg'
             const name = `${deviceName}+${slot.label}+${dateStr}.${ext}`
             result.push(name)
-            photoFiles.push({ exportName: name, srcPath: path })
+            photoFiles.push({ exportName: name, srcPath: path, folder })
         }
     })
 

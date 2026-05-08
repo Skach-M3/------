@@ -1294,11 +1294,27 @@ export default {
           //   continue;
           // }
 
-          var polyline = L.polyline([prevDevice.latlng, currentDevice.latlng], {
+          // 判断当前设备是否为"电缆"，决定连线样式
+          var isCable = false;
+          var attrs = currentDevice.attributes || {};
+          if (currentDevice.device_type === 'pole' && attrs.wire_type === '电缆') {
+            isCable = true;
+          } else if (currentDevice.device_type === 'cable_turning_point' && attrs.cable_type === '电缆') {
+            isCable = true;
+          }
+
+          var polylineOptions = {
             color: '#03da6b',
             weight: 2,
             opacity: 1
-          }).addTo(this.deviceLayerGroup);
+          };
+          if (isCable) {
+            polylineOptions.dashArray = '6, 6';  // 虚线：6px实线 + 6px间隔
+            // polylineOptions.color = '#5aa9ff';  // 蓝色
+          }
+
+          var polyline = L.polyline([prevDevice.latlng, currentDevice.latlng], polylineOptions)
+            .addTo(this.deviceLayerGroup);
 
           if (!this.devicePolylines[currentDevice.id]) this.devicePolylines[currentDevice.id] = [];
           this.devicePolylines[currentDevice.id].push(polyline);

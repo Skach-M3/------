@@ -6,7 +6,7 @@
             <view class="status-bar"></view>
             <view class="header-text">
                 <text class="welcome-title">欢迎登录</text>
-                <text class="welcome-subtitle">电力设备采集系统</text>
+                <text class="welcome-subtitle">现场作业APP</text>
             </view>
         </view>
 
@@ -76,7 +76,7 @@
 
         <!-- 底部版权 -->
         <view class="footer">
-            <text class="footer-text">© 2026 电力设备采集系统 v1.0</text>
+            <text class="footer-text">© 2026 现场作业APP v1.0</text>
         </view>
     </view>
 </template>

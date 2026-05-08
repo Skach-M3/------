@@ -86,9 +86,10 @@ const handleLogout = () => {
     uni.showModal({
         title: '提示',
         content: '确定要退出登录吗？',
-        confirmColor: '#e53935',
+        confirmText: '取消',
+        cancelText: '确定',
         success: (res) => {
-            if (!res.confirm) return;
+            if (!res.cancel) return;
 
             // 1. 停止鉴权定时器，避免退出后还触发无意义的 checkAuth
             stopAuthTimer();

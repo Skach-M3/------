@@ -9,6 +9,13 @@
 			"navigationStyle": "custom"
 		},
 		{
+			"path": "pages/index/myInfo",
+			"style": {
+				"navigationBarTitleText": "",
+				"navigationStyle": "custom"
+			}
+		},
+		{
 			"path": "pages/line/lineList",
 			"style": {
 				"navigationBarTitleText": "",
@@ -60,6 +67,22 @@
 			"path": "/components/SchemaForm"
 		}
 	],
+	"tabBar": {
+		"color": "#999999",
+		"selectedColor": "#006567",
+		"backgroundColor": "#ffffff",
+		"borderStyle": "white",
+		"list": [
+			{
+				"pagePath": "pages/index/index",
+				"text": "首页"
+			},
+			{
+				"pagePath": "pages/index/myInfo",
+				"text": "我的"
+			}
+		]
+	},
 	"globalStyle": {
 		"navigationBarTextStyle": "black",
 		"navigationBarTitleText": "",

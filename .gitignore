@@ -40,3 +40,4 @@ lerna-debug.log*
 
 # 7. 打包相关
 /unpackage/
+my.keystore

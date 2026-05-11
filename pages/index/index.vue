@@ -44,7 +44,7 @@
 					</view>
 
 					<!-- 数据上传 (蓝色) -->
-					<view class="action-item">
+					<view class="action-item" @click="handleAction('upload')">
 						<view class="icon-wrapper blue-bg">
 							<!-- 将 arrow-upward 替换为 cloud-upload -->
 							<image src="/static/upload.png" style="width: 26px; height: 26px;" mode="aspectFit"></image>
@@ -60,17 +60,28 @@
 			<view class="card-box flex-card">
 				<!-- 标题固定在卡片顶部 -->
 				<view class="card-title sticky-title">工作日报</view>
+				<view class="action-grid">
+
+					<!-- 工作日报 -->
+					<view class="action-item" @click="handleAction('daylyReport')">
+						<view class="icon-wrapper blue-bg">
+							<image src="/static/daylyReport.png" style="width: 30px; height: 30px;" mode="aspectFit">
+							</image>
+						</view>
+						<text class="action-name">工作日报</text>
+					</view>
+				</view>
 
 				<!-- 仅列表区域滚动 -->
-				<scroll-view scroll-y class="task-scroll-area">
-					<!-- 空状态 -->
+				<!-- <scroll-view scroll-y class="task-scroll-area">
+
 					<view class="empty-tip" v-if="lineList.length === 0">
 						<text class="empty-text">暂无线路，请先在"线路采集"中新建</text>
 					</view>
 
 					<view class="task-list" v-else>
 						<view class="card-item" v-for="item in lineList" :key="item.id">
-							<!-- 卡片上半部分：信息 -->
+							
 							<view class="card-header">
 								<view class="header-left">
 									<view class="tag" :style="{ color: themeColor, backgroundColor: themeColorLight }">
@@ -81,13 +92,13 @@
 								<text class="date">{{ item.created_date }}</text>
 							</view>
 
-							<!-- 卡片中间：详细信息 -->
+							
 							<view class="card-info" v-if="item.station || item.recorder">
 								<text class="info-text" v-if="item.station">变电站：{{ item.station }}</text>
 								<text class="info-text" v-if="item.recorder">采录人：{{ item.recorder }}</text>
 							</view>
 
-							<!-- 卡片下半部分：操作按钮 -->
+							
 							<view class="card-actions">
 								<view class="action-btn btn-edit" @click="handleEdit(item)">编辑</view>
 								<view class="action-btn btn-collect" @click="handleCollect(item)">进入采集</view>
@@ -96,7 +107,7 @@
 					</view>
 
 					<view class="bottom-spacer"></view>
-				</scroll-view>
+				</scroll-view> -->
 			</view>
 		</view>
 
@@ -298,6 +309,10 @@ const handleAction = (type: string) => {
 	console.log('点击', type);
 	if (type === 'line') {
 		uni.navigateTo({ url: '/pages/line/lineList' });
+	} else if (type === 'upload') {
+		uni.showToast({ title: '上传功能暂未开放', icon: 'none' });
+	} else if (type === 'daylyReport') {
+		uni.showToast({ title: '工作日报功能暂未开放', icon: 'none' });
 	}
 };
 
@@ -324,7 +339,7 @@ const switchTab = (type: string) => {
 	if (type === 'my') {
 		uni.switchTab({ url: '/pages/index/myInfo' });
 	} else if (type === 'stat') {
-		uni.showToast({ title: '统计页开发中', icon: 'none' });
+		uni.showToast({ title: '统计页暂未开放', icon: 'none' });
 	}
 };
 

@@ -3,7 +3,7 @@
 		<!-- 标题栏放在最顶上 -->
 		<view class="nav-bar">
 			<view class="logo-box">
-				<image class="logo-img" src="/static/logo.svg" mode="aspectFit"></image>
+				<image class="logo-img" src="/static/app封面.png" mode="aspectFit"></image>
 			</view>
 			<text class="app-title">现场作业</text>
 		</view>

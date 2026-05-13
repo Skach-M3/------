@@ -15,7 +15,7 @@
             <view class="login-card">
                 <!-- Logo 区域 -->
                 <view class="logo-box">
-                    <image class="logo" src="/static/logo.svg" mode="aspectFit"></image>
+                    <image class="logo" src="/static/app封面.png" mode="aspectFit"></image>
                 </view>
 
                 <!-- 表单区域 -->

@@ -13,7 +13,7 @@
             <!-- 用户卡片 -->
             <view class="user-card">
                 <view class="avatar-box">
-                    <image class="avatar-img" src="/static/logo.svg" mode="aspectFit"></image>
+                    <image class="avatar-img" src="/static/app封面.png" mode="aspectFit"></image>
                 </view>
                 <view class="user-info">
                     <text class="user-name">{{ userName }}</text>

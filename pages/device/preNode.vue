@@ -41,6 +41,12 @@
                         <text class="device-name">{{ item.name || '未命名' }}</text>
                     </view>
 
+                    <!-- 同类型：复制节点信息按钮 -->
+                    <view v-if="deviceType && item.device_type === deviceType" class="copy-node-btn"
+                        @click.stop="copyNodeInfo(item)">
+                        <text class="copy-node-btn-text">复制节点信息</text>
+                    </view>
+
                     <!-- 右侧：展开/收起按钮（仅当有子设备时显示） -->
                     <view v-if="item.displayChildren && item.displayChildren.length > 0" class="expand-btn"
                         @click.stop="toggleExpand(item)">
@@ -55,6 +61,10 @@
                         <view class="child-content">
                             <text class="child-type">{{ child.deviceLabel || child.device_type }}</text>
                             <text class="child-name">{{ child.name || '未命名' }}</text>
+                        </view>
+                        <view v-if="deviceType && child.device_type === deviceType" class="copy-node-btn"
+                            @click.stop="copyNodeInfo(child)">
+                            <text class="copy-node-btn-text">复制节点信息</text>
                         </view>
                     </view>
                 </view>
@@ -75,6 +85,7 @@ export default {
             lineName: '',
             isPreNodeSelect: false, // 是否是在选择上级节点，用于兼容地图页搜索和上级节点选择
             deviceId: '', // 当前编辑的设备ID，用于排除
+            deviceType: '', // 当前编辑的设备类型，用于同类型设备显示复制按钮
             keyword: '',
             selectedType: '', // 当前选中的设备类型，空字符串表示全部
             availableTypes: [], // 动态提取的所有设备类型
@@ -152,6 +163,7 @@ export default {
         this.lineId = query.lineId || '';
         this.lineName = query.lineName ? decodeURIComponent(query.lineName) : '';
         this.deviceId = query.deviceId || '';
+        this.deviceType = query.deviceType || '';
         this.isPreNodeSelect = query.isPreNodeSelect === 'true' || false;
 
         this.loadData();
@@ -216,6 +228,34 @@ export default {
             const original = this.deviceList.find(d => d.id === item.id);
             if (original) {
                 original.expanded = !original.expanded;
+            }
+        },
+
+        async copyNodeInfo(device) {
+            try {
+                const fullDevice = await deviceDAO.findById(device.id);
+                if (!fullDevice) {
+                    uni.showToast({ title: '设备不存在', icon: 'none' });
+                    return;
+                }
+                const attrs = fullDevice.attributes
+                    ? (typeof fullDevice.attributes === 'string'
+                        ? JSON.parse(fullDevice.attributes)
+                        : fullDevice.attributes)
+                    : {};
+
+                const eventChannel = this.getOpenerEventChannel();
+                if (eventChannel && eventChannel.emit) {
+                    eventChannel.emit('copyNodeInfo', {
+                        device_type: device.device_type,
+                        attributes: attrs
+                    });
+                }
+                uni.showToast({ title: '复制成功', icon: 'success' });
+                setTimeout(() => uni.navigateBack(), 800);
+            } catch (e) {
+                console.error('复制节点信息失败:', e);
+                uni.showToast({ title: '复制失败', icon: 'none' });
             }
         },
 
@@ -438,6 +478,9 @@ page {
 }
 
 .child-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: 24rpx 30rpx 24rpx 30rpx;
     border-bottom: 1rpx solid #f0f0f0;
 }
@@ -453,6 +496,22 @@ page {
 .child-content {
     display: flex;
     align-items: center;
+    flex: 1;
+    min-width: 0;
+}
+
+.copy-node-btn {
+    flex-shrink: 0;
+    margin-left: 16rpx;
+    padding: 8rpx 18rpx;
+    background: #eef3ff;
+    border-radius: 8rpx;
+    border: 1rpx solid #2979ff;
+}
+
+.copy-node-btn-text {
+    font-size: 22rpx;
+    color: #2979ff;
 }
 
 .child-type {

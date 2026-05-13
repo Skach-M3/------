@@ -35,9 +35,6 @@
         <view class="card">
             <view class="card-header">
                 <text class="card-title">{{ currentSchema.label }}</text>
-                <view v-if="showCopyFromParent" class="copy-btn" @click="handleCopyFromParent">
-                    <text class="copy-btn-text">复制上级节点信息</text>
-                </view>
             </view>
 
             <view class="schema-form">
@@ -404,9 +401,7 @@ export default {
 
             cabinetNumberManuallyEdited: false, // 开关柜编号是否手工修改
 
-            // 上级节点缓存
             prevDeviceType: '',
-            prevDeviceAttributes: null,
 
             // 链表 & 排序
             prevId: '',
@@ -462,9 +457,6 @@ export default {
     computed: {
         showPreNodeSelect() {
             return this.currentSchema.isPreNodeEditable === true
-        },
-        showCopyFromParent() {
-            return !!(this.prevId && this.prevDeviceType && this.prevDeviceType === this.deviceType)
         },
         groupedFields() {
             const fields = this.currentSchema?.fields || []
@@ -861,7 +853,6 @@ export default {
             if (!this.prevId) {
                 this.preNodeDisplay = ''
                 this.prevDeviceType = ''
-                this.prevDeviceAttributes = null
                 return
             }
             try {
@@ -869,10 +860,6 @@ export default {
                 if (device) {
                     this.preNodeDisplay = device.name || '未命名'
                     this.prevDeviceType = device.device_type || ''
-                    const attrs = device.attributes
-                        ? (typeof device.attributes === 'string' ? JSON.parse(device.attributes) : device.attributes)
-                        : {}
-                    this.prevDeviceAttributes = attrs
                 }
             } catch (e) {
                 console.error('加载上级节点名称失败:', e)
@@ -900,10 +887,13 @@ export default {
 
         goToPreNodeSelect() {
             uni.navigateTo({
-                url: `/pages/device/preNode?lineId=${this.lineId}&lineName=${encodeURIComponent(this.lineName)}&deviceId=${this.deviceId}&isPreNodeSelect=true`,
+                url: `/pages/device/preNode?lineId=${this.lineId}&lineName=${encodeURIComponent(this.lineName)}&deviceId=${this.deviceId}&isPreNodeSelect=true&deviceType=${this.deviceType}`,
                 events: {
                     selectPreNode: (data) => {
                         this.handlePreNodeSelected(data)
+                    },
+                    copyNodeInfo: (data) => {
+                        this.handleCopyNodeInfo(data)
                     }
                 }
             })
@@ -921,17 +911,12 @@ export default {
                     const prevDevice = await deviceDAO.findById(data.id)
                     if (prevDevice) {
                         this.prevDeviceType = prevDevice.device_type || ''
-                        const attrs = prevDevice.attributes
-                            ? (typeof prevDevice.attributes === 'string' ? JSON.parse(prevDevice.attributes) : prevDevice.attributes)
-                            : {}
-                        this.prevDeviceAttributes = attrs
                     }
                 } catch (e) {
                     console.warn('加载上级设备失败:', e)
                 }
             } else {
                 this.prevDeviceType = ''
-                this.prevDeviceAttributes = null
             }
         },
 
@@ -940,10 +925,11 @@ export default {
             this.prevId = ''
             this.preNodeDisplay = ''
             this.prevDeviceType = ''
-            this.prevDeviceAttributes = null
         },
 
-        async handleCopyFromParent() {
+        handleCopyNodeInfo(data) {
+            if (!data || !data.attributes) return
+
             const copyableKeys = (this.currentSchema.fields || [])
                 .filter(f => f.isCopyable)
                 .map(f => f.key)
@@ -953,24 +939,7 @@ export default {
                 return
             }
 
-            let parentAttrs = this.prevDeviceAttributes
-            if (!parentAttrs) {
-                try {
-                    const prevDevice = await deviceDAO.findById(this.prevId)
-                    if (!prevDevice) {
-                        uni.showToast({ title: '上级节点不存在', icon: 'none' })
-                        return
-                    }
-                    parentAttrs = prevDevice.attributes
-                        ? (typeof prevDevice.attributes === 'string' ? JSON.parse(prevDevice.attributes) : prevDevice.attributes)
-                        : {}
-                    this.prevDeviceAttributes = parentAttrs
-                } catch (e) {
-                    uni.showToast({ title: '加载上级节点失败', icon: 'none' })
-                    return
-                }
-            }
-
+            const parentAttrs = data.attributes
             const newAttrs = { ...this.attributes }
             copyableKeys.forEach(key => {
                 const val = parentAttrs[key]
@@ -979,7 +948,6 @@ export default {
 
             this.attributes = newAttrs
             this.ensureLayoutByBusbarCount()
-            uni.showToast({ title: '复制成功', icon: 'success' })
         },
 
         /* ========== 字段基础方法 ========== */
@@ -2222,18 +2190,6 @@ export default {
     font-size: 32rpx;
     font-weight: bold;
     color: #333;
-}
-
-.copy-btn {
-    padding: 8rpx 20rpx;
-    background: #eef3ff;
-    border-radius: 8rpx;
-    border: 1rpx solid #2979ff;
-}
-
-.copy-btn-text {
-    font-size: 24rpx;
-    color: #2979ff;
 }
 
 /* ---- 底部保存栏 ---- */

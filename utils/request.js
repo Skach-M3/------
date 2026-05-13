@@ -1,3 +1,5 @@
+import { getToken } from '@/utils/auth.js';
+
 const BASE_URL = 'http://8.163.33.20';
 
 export function request(options) {
@@ -8,6 +10,7 @@ export function request(options) {
             data: options.data || {},
             header: {
                 'Content-Type': 'application/json',
+                ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
                 ...(options.header || {})
             },
             timeout: 15000,

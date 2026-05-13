@@ -2,6 +2,7 @@
 import { checkAuthApi } from '@/api/auth.js';
 import {
     getToken,
+    setToken,
     clearToken,
     setLastAuthTime,
     isWithinAuthGrace,
@@ -36,9 +37,21 @@ export const checkAuth = async ({ silent = false } = {}) => {
     isChecking = true;
 
     try {
-        await checkAuthApi();
+        console.log('[authGuard] checkAuth → 发送 token:', getToken());
+        const res = await checkAuthApi();
+        console.log('[authGuard] checkAuth ← 返回:', res);
         // ✅ 鉴权成功：刷新锚点
         setLastAuthTime(Date.now());
+        // 更新 token 和用户信息缓存（name / expireTime）
+        if (res) {
+            if (res.token) setToken(res.token);
+            const prev = uni.getStorageSync('userInfo') || {};
+            uni.setStorageSync('userInfo', {
+                ...prev,
+                ...(res.name ? { name: res.name } : {}),
+                ...(res.expireTime ? { expireTime: res.expireTime } : {})
+            });
+        }
         restartAuthTimer();
         return true;
     } catch (err) {

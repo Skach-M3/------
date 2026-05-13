@@ -18,7 +18,7 @@
                 <view class="user-info">
                     <text class="user-name">{{ userName }}</text>
                     <view class="user-tag">
-                        <text class="tag-text">现场作业员</text>
+                        <text class="tag-text">{{ expireTime ? '过期时间：' + expireTime : '---' }}</text>
                     </view>
                 </view>
             </view>
@@ -70,8 +70,9 @@ import { onShow } from '@dcloudio/uni-app';
 import { clearToken } from '@/utils/auth.js';
 import { stopAuthTimer } from '@/utils/authGuard.js';
 
-const version = ref<string>('v1.0.0');
+const version = ref<string>('v1.1.0');
 const userName = ref<string>('用户');
+const expireTime = ref<string>('');
 
 // 动态获取系统状态栏高度 (兼容各端)
 const systemInfo = uni.getSystemInfoSync();
@@ -79,6 +80,15 @@ const statusBarHeight = ref<number>(systemInfo.statusBarHeight || 44);
 
 onShow(() => {
     uni.hideTabBar();
+    const info = uni.getStorageSync('userInfo');
+    if (info) {
+        if (info.name) userName.value = info.name;
+        if (info.expireTime) {
+            const d = new Date(info.expireTime);
+            const pad = (n: number) => String(n).padStart(2, '0');
+            expireTime.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        }
+    }
 });
 
 // 退出登录

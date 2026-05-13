@@ -141,6 +141,10 @@ const handleLogin = async () => {
         // 4. 处理返回结果
         if (res && res.token) {
             setToken(res.token)
+            uni.setStorageSync('userInfo', {
+                name: res.name || '',
+                expireTime: res.expireTime || ''
+            })
             uni.showToast({ title: '登录成功', icon: 'success', duration: 800 })
             setTimeout(() => {
                 uni.reLaunch({ url: '/pages/index/index' })

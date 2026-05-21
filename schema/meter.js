@@ -48,7 +48,8 @@ export default {
                 { label: '拆除重封锁', value: '拆除重封锁' },
                 { label: '拆除未封锁', value: '拆除未封锁' },
                 { label: '无盖', value: '无盖' },
-                { label: '无封锁', value: '无封锁' }
+                { label: '无封锁', value: '无封锁' },
+                { label: '已封锁', value: '已封锁' }
             ],
             exportOrder: 3,
             exportLabel: '箱柜加封锁'
@@ -64,7 +65,8 @@ export default {
                 { label: '拆除重封锁', value: '拆除重封锁' },
                 { label: '拆除未封锁', value: '拆除未封锁' },
                 { label: '无盖', value: '无盖' },
-                { label: '无封锁', value: '无封锁' }
+                { label: '无封锁', value: '无封锁' },
+                { label: '已封锁', value: '已封锁' }
             ],
             exportOrder: 4,
             exportLabel: '电表加封锁'
@@ -80,7 +82,8 @@ export default {
                 { label: '拆除重封锁', value: '拆除重封锁' },
                 { label: '拆除未封锁', value: '拆除未封锁' },
                 { label: '无盖', value: '无盖' },
-                { label: '无封锁', value: '无封锁' }
+                { label: '无封锁', value: '无封锁' },
+                { label: '已封锁', value: '已封锁' }
             ],
             exportOrder: 5,
             exportLabel: '接线盒加封锁'
@@ -180,10 +183,10 @@ export default {
             isCopyable: true,
             options: [
                 { label: '其他', value: '其他' },
-                { label: '一象限右上', value: '一象限右上' },
-                { label: '二象限右下', value: '二象限右下' },
-                { label: '三象限左下', value: '三象限左下' },
-                { label: '四象限左上', value: '四象限左上' }
+                { label: '一象限', value: '一象限' },
+                { label: '二象限', value: '二象限' },
+                { label: '三象限', value: '三象限' },
+                { label: '四象限', value: '四象限' }
             ],
             exportOrder: 12,
             exportLabel: '电表四象限'

@@ -218,32 +218,67 @@ function onClearDebugLocation() {
 const userLocation = ref({ lat: 0, lng: 0 });
 
 // ========== 持续定位 ==========
-const locationTimer = ref<number | null>(null);
+const isMapPageVisible = ref(false);
+const isInitialLocating = ref(false);
+const isLocationWatchStarted = ref(false);
+let locationWatchToken = 0;
+
+const handleLocationChange = (res: any) => {
+  if (!res || typeof res.latitude !== 'number' || typeof res.longitude !== 'number') return;
+
+  userLocation.value = { lat: res.latitude, lng: res.longitude };
+  // Update only the blue location marker; do not recenter the map view.
+  mapConfig.center = [res.latitude, res.longitude];
+  mapConfig.actionType = 'updateLocation';
+  mapConfig.actionId++;
+};
 
 const startLocationWatch = () => {
-  stopLocationWatch(); // 防止重复
-  locationTimer.value = setInterval(() => {
-    getLocation({
-      type: 'wgs84',
-      success: (res) => {
-        userLocation.value = { lat: res.latitude, lng: res.longitude };
-        // 仅更新蓝点位置，不移动地图视野
-        mapConfig.center = [res.latitude, res.longitude];
-        mapConfig.actionType = 'updateLocation';
-        mapConfig.actionId++;
-      },
-      fail: () => {
-        // 静默失败，不打断用户操作
+  stopLocationWatch(); // 防止重复监听
+  const uniApi = uni as any;
+  const token = ++locationWatchToken;
+
+  if (typeof uniApi.startLocationUpdate !== 'function' || typeof uniApi.onLocationChange !== 'function') {
+    console.warn('当前平台不支持前台持续定位');
+    return;
+  }
+
+  uniApi.startLocationUpdate({
+    type: 'wgs84',
+    success: () => {
+      if (token !== locationWatchToken || !isMapPageVisible.value) {
+        if (typeof uniApi.stopLocationUpdate === 'function') {
+          uniApi.stopLocationUpdate();
+        }
+        return;
       }
-    });
-  }, 3000); // 每3秒更新一次，可根据需要调整
+      uniApi.onLocationChange(handleLocationChange);
+      isLocationWatchStarted.value = true;
+    },
+    fail: (err) => {
+      console.warn('开启前台持续定位失败:', err);
+      isLocationWatchStarted.value = false;
+    }
+  });
 };
 
 const stopLocationWatch = () => {
-  if (locationTimer.value) {
-    clearInterval(locationTimer.value);
-    locationTimer.value = null;
+  const uniApi = uni as any;
+  locationWatchToken++;
+
+  if (typeof uniApi.offLocationChange === 'function') {
+    uniApi.offLocationChange(handleLocationChange);
   }
+
+  if (isLocationWatchStarted.value && typeof uniApi.stopLocationUpdate === 'function') {
+    uniApi.stopLocationUpdate({
+      fail: (err) => {
+        console.warn('停止前台持续定位失败:', err);
+      }
+    });
+  }
+
+  isLocationWatchStarted.value = false;
 };
 
 // Haversine 公式计算两点距离，返回格式化字符串
@@ -866,6 +901,8 @@ onLoad((options) => {
   }
 
   uni.$on('map-message', handleMapMessage);
+  isInitialLocating.value = true;
+  stopLocationWatch();
   uni.showLoading({ title: '定位中...' });
   getLocation({
     type: 'wgs84',
@@ -876,29 +913,39 @@ onLoad((options) => {
       mapConfig.zoom = 16;
       mapConfig.actionType = 'initLocate';
       mapConfig.actionId++;
-      startLocationWatch();
     },
-    fail: () => {
+    fail: (err) => {
       uni.hideLoading();
+      console.warn('首次获取定位失败:', err);
       uni.showToast({ title: '获取定位失败', icon: 'none' });
       // 即使首次失败也启动持续定位，后续可能恢复
-      startLocationWatch();
+    },
+    complete: () => {
+      isInitialLocating.value = false;
+      if (isMapPageVisible.value) {
+        startLocationWatch();
+      }
     }
   });
 });
 
 // ← 新增：每次页面显示时重新加载设备（包括从编辑页返回时）
 onShow(() => {
+  isMapPageVisible.value = true;
   loadDevices();
-  startLocationWatch();
+  if (!isInitialLocating.value) {
+    startLocationWatch();
+  }
 });
 
 onHide(() => {
+  isMapPageVisible.value = false;
   stopLocationWatch();
 });
 
 onUnmounted(() => {
   uni.$off('map-message', handleMapMessage);
+  isMapPageVisible.value = false;
   stopLocationWatch();
 });
 </script>

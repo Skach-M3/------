@@ -290,6 +290,7 @@ function addLineSheet(wb, line) {
 
 function addDeviceSheet(wb, schema, devices, line, idNameMap, photoFiles, allFolders) {
     const sortedFields = (schema.fields || [])
+        .filter(f => f.export !== false)
         .slice()
         .sort((a, b) => (a.exportOrder || 9999) - (b.exportOrder || 9999))
 
@@ -434,6 +435,10 @@ function getFileExt(path) {
 
 function arrayBufferToBase64(buffer) {
     const bytes = new Uint8Array(buffer)
+    return bytesToBase64(bytes)
+}
+
+function bytesToBase64(bytes) {
     let binary = ''
     const chunk = 0x8000
     for (let i = 0; i < bytes.length; i += chunk) {
@@ -562,6 +567,7 @@ function mkdirsAbs(absPath) {
 /** 写 Excel:ArrayBuffer → Java byte[] → 公共目录文件 */
 function writeBinaryFileAbs(absPath, arrayBuffer) {
     return new Promise((resolve, reject) => {
+        let fos = null
         try {
             if (plus.os.name !== 'Android') {
                 return reject(new Error('当前实现仅支持 Android'))
@@ -573,18 +579,34 @@ function writeBinaryFileAbs(absPath, arrayBuffer) {
             const file = new File(absPath)
             const parent = file.getParentFile()
             if (parent && !parent.exists()) parent.mkdirs()
+            if (file.exists()) file['delete']()
 
-            const b64 = arrayBufferToBase64(arrayBuffer)
-            const bytes = Base64.decode(b64, 0)
-
-            const fos = new FileOutputStream(file)
-            fos.write(bytes)
+            const sourceBytes = new Uint8Array(arrayBuffer)
+            fos = new FileOutputStream(file)
+            const chunkSize = 64 * 1024
+            for (let offset = 0; offset < sourceBytes.length; offset += chunkSize) {
+                const end = Math.min(offset + chunkSize, sourceBytes.length)
+                const b64 = bytesToBase64(sourceBytes.subarray(offset, end))
+                const bytes = Base64.decode(b64, 0)
+                fos.write(bytes)
+            }
             fos.flush()
             fos.close()
+            fos = null
+
+            const realSize = Number(file.length() || 0)
+            const expectedSize = Number(sourceBytes.length || 0)
+            if (realSize <= 0) {
+                return reject(new Error('Excel 写入后文件仍为 0B:' + absPath))
+            }
+            if (expectedSize > 0 && realSize !== expectedSize) {
+                return reject(new Error(`Excel 写入大小异常: 实际 ${realSize}, 预期 ${expectedSize}`))
+            }
 
             notifyMediaScan(absPath)
             resolve(absPath)
         } catch (e) {
+            try { if (fos) fos.close() } catch (_) { }
             reject(new Error('写文件异常:' + (e && e.message || e)))
         }
     })

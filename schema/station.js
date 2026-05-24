@@ -183,6 +183,7 @@ export default {
              */
             dependsOn: 'busbar_count',
             childDeviceType: 'switchgear',  // 生成的子设备类型
+            export: false,
             exportOrder: 10,
             exportLabel: '开关柜布局'
         },

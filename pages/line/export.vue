@@ -65,9 +65,9 @@
                     </view>
                 </view>
 
-                <view class="diagnostic-action" @click="handleDiagnosticExport" hover-class="diagnostic-action-hover">
+                <!-- <view class="diagnostic-action" @click="handleDiagnosticExport" hover-class="diagnostic-action-hover">
                     导出诊断数据
-                </view>
+                </view> -->
 
             </view>
         </scroll-view>

@@ -195,7 +195,8 @@ export default {
     } else {
       this.initNewDevice()
     }
-    this.prefetchWatermarkInfo();
+    // No watermark: keep location prefetch disabled. Restore by uncommenting this line.
+    // this.prefetchWatermarkInfo();
   },
 
   // ★ 新增：每次页面显示时刷新子设备列表（从子设备编辑页返回时触发）
@@ -455,17 +456,17 @@ export default {
         return
       }
 
-      uni.showLoading({ title: '处理中...', mask: true })
-
       try {
-        // 2. 获取位置信息和当前时间
-        const [locationInfo, dateTime] = await Promise.all([
-          this.getWatermarkInfoForShot(),
-          this.getCurrentDateTime()
-        ])
+        // No watermark: save original photo directly. Restore by uncommenting the
+        // Promise block below and switching watermarkedPath back to addWatermark.
+        // const [locationInfo, dateTime] = await Promise.all([
+        //   this.getWatermarkInfoForShot(),
+        //   this.getCurrentDateTime()
+        // ])
+        const watermarkedPath = tempFilePath
 
         // 3. 添加水印
-        const watermarkedPath = await this.addWatermark(tempFilePath, locationInfo, dateTime)
+        // const watermarkedPath = await this.addWatermark(tempFilePath, locationInfo, dateTime)
 
         // 4. 保存到持久化存储
         const saveRes = await new Promise((resolve, reject) => {
@@ -487,12 +488,10 @@ export default {
         // 6. 更新照片数据
         this.photos = { ...this.photos, [key]: savedPath }
 
-        uni.hideLoading()   // 成功分支先关 loading
         uni.showToast({ title: '拍照成功', icon: 'success' })
       } catch (e) {
-        uni.hideLoading()
-        console.error('添加水印或保存失败:', e)
-        uni.showToast({ title: '处理失败，请重试', icon: 'none' })
+        console.error('保存照片失败:', e)
+        uni.showToast({ title: '保存失败，请重试', icon: 'none' })
       }
     },
 

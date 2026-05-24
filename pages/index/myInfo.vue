@@ -69,8 +69,9 @@ import { ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import { clearToken } from '@/utils/auth.js';
 import { stopAuthTimer } from '@/utils/authGuard.js';
+import manifest from '@/manifest.json';
 
-const version = ref<string>('v1.1.0');
+const version = ref<string>(`v${manifest.versionName}`);
 const userName = ref<string>('用户');
 const expireTime = ref<string>('');
 

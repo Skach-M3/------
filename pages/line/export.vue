@@ -65,6 +65,10 @@
                     </view>
                 </view>
 
+                <view class="diagnostic-action" @click="handleDiagnosticExport" hover-class="diagnostic-action-hover">
+                    导出诊断数据
+                </view>
+
             </view>
         </scroll-view>
 
@@ -83,6 +87,7 @@ import { ref } from 'vue';
 import { onLoad } from '@dcloudio/uni-app';
 import { themeColor } from '@/static/themeColor.js';
 import { exportLine } from '@/utils/exportLine.js';
+import { exportLineDiagnostic } from '@/utils/exportLineDiagnostic.js';
 
 // 由 LineList 跳转时传入
 let lineId: string | number = '';
@@ -185,6 +190,62 @@ const handleExport = async () => {
         console.error('[export] 失败', e);
         uni.showModal({
             title: '导出失败',
+            content: String(e && e.message || e),
+            showCancel: false
+        });
+    }
+};
+
+const handleDiagnosticExport = async () => {
+    if (!lineId) {
+        return uni.showToast({ title: '缺少线路ID', icon: 'none' });
+    }
+    const trimmedName = (fileName.value || '').trim();
+    if (!trimmedName) {
+        return uni.showToast({ title: '请输入文件名', icon: 'none' });
+    }
+
+    const granted = await requestStoragePermission();
+    if (!granted) {
+        return uni.showModal({
+            title: '提示',
+            content: '请开启存储权限后重试',
+            showCancel: false
+        });
+    }
+
+    uni.showLoading({
+        title: '导出诊断数据...',
+        mask: true
+    });
+
+    try {
+        const { displayPath, diagnosticPath } = await exportLineDiagnostic(lineId, {
+            fileName: trimmedName,
+            baseDir
+        });
+
+        uni.hideLoading();
+
+        uni.showModal({
+            title: '诊断数据已导出',
+            content: `文件已保存至:\n${displayPath}\n\n请把诊断探针、诊断摘要、原始数据 json 文件一起转发给开发人员。`,
+            confirmText: '复制路径',
+            cancelText: '知道了',
+            success: (res) => {
+                if (res.confirm) {
+                    uni.setClipboardData({
+                        data: diagnosticPath,
+                        success: () => uni.showToast({ title: '路径已复制' })
+                    });
+                }
+            }
+        });
+    } catch (e: any) {
+        uni.hideLoading();
+        console.error('[diagnostic-export] 失败', e);
+        uni.showModal({
+            title: '诊断导出失败',
             content: String(e && e.message || e),
             showCancel: false
         });
@@ -324,6 +385,18 @@ const handleExport = async () => {
     .radio-icon-wrapper {
         background-color: #e0f2f1; // 仅在点击瞬间出现浅绿色光晕
     }
+}
+
+.diagnostic-action {
+    margin-top: 10rpx;
+    padding: 18rpx 0;
+    text-align: center;
+    font-size: 24rpx;
+    color: #999999;
+}
+
+.diagnostic-action-hover {
+    color: #666666;
 }
 
 /* 底部按钮区域 */

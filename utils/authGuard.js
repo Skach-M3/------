@@ -1,102 +1,110 @@
-// utils/authGuard.js
 import { checkAuthApi } from '@/api/auth.js';
 import {
     getToken,
     setToken,
-    clearToken,
     setLastAuthTime,
     isWithinAuthGrace,
     getAuthGraceRemaining,
     AUTH_VALID_DURATION
 } from '@/utils/auth.js';
+import { forceLogout, registerForceLogoutHandler } from '@/utils/session.js';
 
 let timer = null;
-let isChecking = false;
+let checkingPromise = null;
 
-const forceLogout = (reason) => {
+const LOGIN_URL = '/pages/login/login';
+const ONE_HOUR = 60 * 60 * 1000;
+const TEN_MIN = 10 * 60 * 1000;
+
+registerForceLogoutHandler(() => {
     stopAuthTimer();
-    clearToken();
-    uni.hideLoading();
-    uni.showModal({
-        title: '提示',
-        content: reason || '登录已过期，请重新登录',
-        showCancel: false,
-        confirmText: '去登录',
-        success: () => {
-            uni.reLaunch({ url: '/pages/login/login' });
-        }
+});
+
+const updateUserInfo = (res) => {
+    if (!res) return;
+
+    if (res.token) setToken(res.token);
+
+    const prev = uni.getStorageSync('userInfo') || {};
+    uni.setStorageSync('userInfo', {
+        ...prev,
+        ...(res.name ? { name: res.name } : {}),
+        ...(res.phone ? { phone: res.phone } : {}),
+        ...(res.expireTime ? { expireTime: res.expireTime } : {}),
+        ...(res.remainingSeconds !== undefined ? { remainingSeconds: res.remainingSeconds } : {})
     });
 };
 
-export const checkAuth = async ({ silent = false } = {}) => {
+const notifyGraceRemaining = () => {
+    const remainMs = getAuthGraceRemaining();
+    if (remainMs <= 0 || remainMs >= ONE_HOUR) return;
+
+    const remainMin = Math.max(1, Math.ceil(remainMs / 60000));
+    const content = `离线可用时长：${remainMin} 分钟，请尽快联网打开 app`;
+
+    if (remainMs <= TEN_MIN) {
+        uni.showModal({
+            title: '提示',
+            content,
+            showCancel: false,
+            confirmText: '知道了'
+        });
+        return;
+    }
+
+    uni.showToast({
+        title: content,
+        icon: 'none',
+        duration: 3000
+    });
+};
+
+const isRejectedByServer = (err) => {
+    return err && [400, 401, 403, 419].includes(Number(err.statusCode));
+};
+
+const runCheckAuth = async ({ silent = false } = {}) => {
     if (!getToken()) {
-        uni.reLaunch({ url: '/pages/login/login' });
+        uni.reLaunch({ url: LOGIN_URL });
         return false;
     }
-    if (isChecking) return true;
-    isChecking = true;
 
     try {
-        console.log('[authGuard] checkAuth → 发送 token:', getToken());
+        console.log('[authGuard] checkAuth -> token:', getToken());
         const res = await checkAuthApi();
-        console.log('[authGuard] checkAuth ← 返回:', res);
-        // ✅ 鉴权成功：刷新锚点
+        console.log('[authGuard] checkAuth <- response:', res);
+
         setLastAuthTime(Date.now());
-        // 更新 token 和用户信息缓存（name / expireTime）
-        if (res) {
-            if (res.token) setToken(res.token);
-            const prev = uni.getStorageSync('userInfo') || {};
-            uni.setStorageSync('userInfo', {
-                ...prev,
-                ...(res.name ? { name: res.name } : {}),
-                ...(res.expireTime ? { expireTime: res.expireTime } : {})
-            });
-        }
+        updateUserInfo(res);
         restartAuthTimer();
         return true;
     } catch (err) {
-        // 1.后端明确拒绝:400(未授权)/ 403(禁止访问) → token 已失效,直接登出
-        if (err && (err.statusCode === 400 || err.statusCode === 403)) {
+        if (isRejectedByServer(err)) {
             console.info('[authGuard] token rejected by server:', err.statusCode);
-            forceLogout('授权已失效,请重新登录');
+            forceLogout('授权已失效，请重新登录');
             return false;
         }
-        // 2.其它情况(网络异常 / 服务端 5xx / 超时等):走离线宽限期逻辑
+
         console.warn('[authGuard] check failed (network or server error):', err);
-
-        if (!silent) {
-            const remainMs = getAuthGraceRemaining();
-            const ONE_HOUR = 60 * 60 * 1000;
-            const TEN_MIN = 10 * 60 * 1000;
-
-            // 仅在剩余不足 1 小时时提醒
-            if (remainMs > 0 && remainMs < ONE_HOUR) {
-                const remainMin = Math.max(1, Math.ceil(remainMs / 60000));
-                const content = `离线可用时长:${remainMin} 分钟,请尽快联网打开 app`;
-
-                if (remainMs <= TEN_MIN) {
-                    // 最后 10 分钟:强制用户确认
-                    uni.showModal({
-                        title: '提示',
-                        content,
-                        showCancel: false,
-                        confirmText: '知道了'
-                    });
-                } else {
-                    // 10 分钟 ~ 1 小时:轻提示,不打断操作
-                    uni.showToast({
-                        title: content,
-                        icon: 'none',
-                        duration: 3000
-                    });
-                }
-            }
+        if (!isWithinAuthGrace()) {
+            forceLogout('登录已过期，请重新登录');
+            return false;
         }
+
+        if (!silent) notifyGraceRemaining();
         restartAuthTimer();
         return true;
-    } finally {
-        isChecking = false;
     }
+};
+
+export const checkAuth = ({ silent = false } = {}) => {
+    if (checkingPromise) return checkingPromise;
+
+    checkingPromise = runCheckAuth({ silent }).finally(() => {
+        checkingPromise = null;
+    });
+
+    return checkingPromise;
 };
 
 export const restartAuthTimer = () => {

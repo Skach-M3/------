@@ -8,10 +8,11 @@ export function loginApi(data) {
     return request({
         url: '/api/auth/login/app',
         method: 'POST',
-        data
+        data,
+        skipAuthLogout: true
     });
 }
 
-// 鉴权检查（200 有效 / 401 无效）
+// 鉴权检查：后端会在响应中返回新 token，用于刷新本地 token 有效期。
 export const checkAuthApi = () =>
-    request({ url: '/api/auth/check', method: 'GET' })
+    request({ url: '/api/auth/check', method: 'GET', authRequest: true });

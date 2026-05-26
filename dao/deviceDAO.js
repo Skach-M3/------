@@ -5,7 +5,55 @@
  */
 import { getSchema } from '@/schema/index.js'
 import { dbHelper } from '../db/dbHelper.js'
-import { generateId } from '../utils/common.js'
+import { generateId, haversineDistance } from '../utils/common.js'
+
+function parseAttributes(raw) {
+    if (!raw) return {}
+    if (typeof raw === 'string') {
+        try {
+            return JSON.parse(raw)
+        } catch (e) {
+            return {}
+        }
+    }
+    return raw && typeof raw === 'object' ? { ...raw } : {}
+}
+
+function getDistanceFields(deviceType) {
+    const schema = getSchema(deviceType)
+    if (!schema || !Array.isArray(schema.fields)) return []
+    return schema.fields.filter(field => field && field.calcType === 'distance_from_prev')
+}
+
+function hasValidCoordinate(longitude, latitude) {
+    const lng = Number(longitude)
+    const lat = Number(latitude)
+    return Number.isFinite(lng) && Number.isFinite(lat)
+}
+
+function calcDistanceFromPrev(device, prevDevice) {
+    if (!device || !prevDevice) return null
+    if (!hasValidCoordinate(device.longitude, device.latitude)) return null
+    if (!hasValidCoordinate(prevDevice.longitude, prevDevice.latitude)) return null
+
+    return haversineDistance(
+        Number(prevDevice.latitude),
+        Number(prevDevice.longitude),
+        Number(device.latitude),
+        Number(device.longitude)
+    ).toFixed(2)
+}
+
+async function updateDeviceAttributes(id, attrs, now) {
+    await dbHelper.execute(
+        `UPDATE t_device SET
+            attributes = ?,
+            sync_status = 0,
+            updated_at = ?
+        WHERE id = ?`,
+        [JSON.stringify(attrs), now, id]
+    )
+}
 
 const deviceDAO = {
 
@@ -86,13 +134,66 @@ const deviceDAO = {
      */
     async updateCoordinates(id, longitude, latitude) {
         const now = Date.now()
-        const sql = `UPDATE t_device SET
-        longitude = ?,
-        latitude = ?,
-        sync_status = 0,
-        updated_at = ?
-    WHERE id = ?`
-        await dbHelper.execute(sql, [longitude, latitude, now, id])
+        const device = await this.findById(id)
+        if (!device) return
+
+        await dbHelper.execute('BEGIN TRANSACTION')
+        try {
+            const attrs = parseAttributes(device.attributes)
+            const updatedDevice = {
+                ...device,
+                longitude,
+                latitude
+            }
+
+            attrs.longitude = longitude
+            attrs.latitude = latitude
+
+            const distanceFields = getDistanceFields(device.device_type)
+            if (distanceFields.length > 0 && device.prev_id) {
+                const prevDevice = await this.findById(device.prev_id)
+                const distance = calcDistanceFromPrev(updatedDevice, prevDevice)
+                if (distance !== null) {
+                    distanceFields.forEach(field => {
+                        attrs[field.key] = distance
+                    })
+                }
+            }
+
+            const sql = `UPDATE t_device SET
+            longitude = ?,
+            latitude = ?,
+            attributes = ?,
+            sync_status = 0,
+            updated_at = ?
+        WHERE id = ?`
+            await dbHelper.execute(sql, [longitude, latitude, JSON.stringify(attrs), now, id])
+
+            const nextDevices = await dbHelper.select(
+                'SELECT * FROM t_device WHERE prev_id = ?',
+                [id]
+            )
+
+            for (const nextDevice of nextDevices) {
+                const nextDistanceFields = getDistanceFields(nextDevice.device_type)
+                if (nextDistanceFields.length === 0) continue
+
+                const distance = calcDistanceFromPrev(nextDevice, updatedDevice)
+                if (distance === null) continue
+
+                const nextAttrs = parseAttributes(nextDevice.attributes)
+                nextDistanceFields.forEach(field => {
+                    nextAttrs[field.key] = distance
+                })
+
+                await updateDeviceAttributes(nextDevice.id, nextAttrs, now)
+            }
+
+            await dbHelper.execute('COMMIT')
+        } catch (e) {
+            await dbHelper.execute('ROLLBACK')
+            throw e
+        }
     },
 
     /**

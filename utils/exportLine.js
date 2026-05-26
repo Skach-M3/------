@@ -351,10 +351,12 @@ function addDeviceSheet(wb, schema, devices, line, idNameMap, photoFiles, allFol
 }
 
 function formatFieldValue(field, value, device) {
+    if (field.key === 'longitude') return device.longitude || ''
+    if (field.key === 'latitude') return device.latitude || ''
+
     if (field.type === 'auto-calc') {
         if (value === undefined || value === null || value === '') {
-            if (field.key === 'longitude') return device.longitude || ''
-            if (field.key === 'latitude') return device.latitude || ''
+            return ''
         }
     }
     if (value === undefined || value === null || value === '') return ''

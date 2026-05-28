@@ -344,14 +344,14 @@ export default {
 
     photoSlots: [
         { key: 'overview', label: '全貌', required: false },
-        { key: 'front', label: '正面', required: false },
         { key: 'nameplate', label: '名称标识牌', required: false },
         { key: 'factory_plate', label: '出厂铭牌', required: false },
         { key: 'capacitor_overview', label: '电容器全貌', required: false },
         { key: 'backup_trans_overview', label: '主备变全貌', required: false },
         { key: 'backup_trans_front', label: '主备变正面', required: false },
         { key: 'backup_trans_nameplate', label: '主备变名称标识牌', required: false },
-        { key: 'backup_trans_factory_plate', label: '主备变出厂铭牌', required: false }
+        { key: 'backup_trans_factory_plate', label: '主备变出厂铭牌', required: false },
+        { key: 'backup_trans_capacitor_overview', label: '备用变电容器全貌', required: false }
     ],
     extraPhotoSlot: true
 }

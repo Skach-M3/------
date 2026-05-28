@@ -74,6 +74,8 @@ export default {
                 { label: '变压器出线柜', value: '变压器出线柜' },
                 { label: '计量柜', value: '计量柜' },
                 { label: '联络柜', value: '联络柜' },
+                { label: 'PT柜', value: 'PT柜' },
+                { label: '隔离柜', value: '隔离柜' },
                 { label: '无法识别', value: '无法识别' }
             ],
             exportOrder: 4,

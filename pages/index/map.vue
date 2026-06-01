@@ -17,7 +17,8 @@
       :change:movingDeviceIdProp="mapModule.onMovingDeviceIdChange" :confirmMoveProp="confirmMoveProp"
       :change:confirmMoveProp="mapModule.onConfirmMoveChange" :blinkDeviceIdProp="blinkDeviceIdProp"
       :change:blinkDeviceIdProp="mapModule.onBlinkDeviceIdChange" :selectedDeviceIdProp="selectedDeviceIdProp"
-      :change:selectedDeviceIdProp="mapModule.onSelectedDeviceIdChange"></view>
+      :change:selectedDeviceIdProp="mapModule.onSelectedDeviceIdChange" :markerDisplayConfigProp="markerDisplayConfig"
+      :change:markerDisplayConfigProp="mapModule.onMarkerDisplayConfigChange"></view>
 
     <!-- 移动模式 - 中心设备标记 -->
     <view v-if="isMovingDevice" class="move-center-pin">
@@ -664,6 +665,12 @@ const lineName = ref('');
 // 名称显示开关，默认显示
 const showDeviceNames = ref(true);
 
+const markerDisplayConfig = {
+  maxVisibleCount: 40,
+  fullDisplayZoom: 15,
+  endpointOnlyZoom: 11
+};
+
 
 /** 跳转到节点搜索页面 */
 const goToDeviceSearch = () => {
@@ -979,6 +986,17 @@ export default {
       debugMarker: null, // DEBUG
       deviceMarkers: {}, // deviceId -> L.marker
       devicePolylines: {}, // deviceId -> [L.polyline, ...]
+      deviceSpanLabels: {}, // deviceId -> [L.marker, ...]
+      spanLabelMarkers: [],
+      deviceMap: {},
+      topLevelDeviceIds: [],
+      prevChildrenMap: {},
+      prevTopLevelById: {},
+      visibleSampledDeviceIds: {},
+      alwaysVisibleDeviceIds: {},
+      markerMaxVisibleCount: 60,
+      markerFullDisplayZoom: 16,
+      markerEndpointOnlyZoom: 10,
       hiddenDeviceId: null, // 当前被隐藏的设备ID
       selectedDeviceId: '', // 当前选中的设备ID（用于抬高 zIndex）
     }
@@ -1040,6 +1058,11 @@ export default {
           lat: e.latlng.lat,
           lng: e.latlng.lng
         });
+      });
+
+      this.map.on('zoomend', () => {
+        this.refreshMarkerVisibility();
+        this.applySelectedMarkerZIndex();
       });
 
       if (this.pendingConfig) {
@@ -1155,6 +1178,27 @@ export default {
       }
     },
 
+    onMarkerDisplayConfigChange(newValue) {
+      if (!newValue) return;
+
+      var maxVisibleCount = Number(newValue.maxVisibleCount);
+      var fullDisplayZoom = Number(newValue.fullDisplayZoom);
+      var endpointOnlyZoom = Number(newValue.endpointOnlyZoom);
+
+      if (!isNaN(maxVisibleCount) && maxVisibleCount > 0) {
+        this.markerMaxVisibleCount = Math.floor(maxVisibleCount);
+      }
+      if (!isNaN(fullDisplayZoom) && fullDisplayZoom > 0) {
+        this.markerFullDisplayZoom = fullDisplayZoom;
+      }
+      if (!isNaN(endpointOnlyZoom) && endpointOnlyZoom > 0) {
+        this.markerEndpointOnlyZoom = endpointOnlyZoom;
+      }
+
+      this.refreshMarkerVisibility();
+      this.applySelectedMarkerZIndex();
+    },
+
     /**
     * 绘制设备标记和连线
     * Marker 样式：倒水滴状定位针 + 内嵌居中 SVG 图标 + 右侧名称标签
@@ -1169,6 +1213,12 @@ export default {
       this.deviceMarkers = {};
       this.devicePolylines = {};
       this.deviceSpanLabels = {};
+      this.spanLabelMarkers = [];
+      this.deviceMap = {};
+      this.topLevelDeviceIds = [];
+      this.prevChildrenMap = {};
+      this.prevTopLevelById = {};
+      this.visibleSampledDeviceIds = {};
 
       if (!devices || devices.length === 0) return;
     
@@ -1329,12 +1379,18 @@ export default {
       }
       
       // 基于 prev_id 连接顶层设备，支持分支线路
+      var prevChildrenMap = {};
+      var prevTopLevelById = {};
+
       for (var j = 0; j < topLevelDevices.length; j++) {
         var currentDevice=topLevelDevices[j];
         if (currentDevice.prev_id && currentDevice.prev_id !=='' ) { 
           // 若 prev_id 指向子设备，自动上溯到其顶层父设备 
           var prevDevice = getTopLevelDevice(currentDevice.prev_id);
-          if (!prevDevice) continue;
+          if (!prevDevice || !prevDevice.latlng) continue;
+          if (!prevChildrenMap[prevDevice.id]) prevChildrenMap[prevDevice.id] = [];
+          prevChildrenMap[prevDevice.id].push(currentDevice.id);
+          prevTopLevelById[currentDevice.id] = prevDevice.id;
           
           // 当设备类型为question时，不绘制连线
           // if (currentDevice.device_type === 'question' || prevDevice.device_type === 'question') {
@@ -1391,6 +1447,7 @@ export default {
             });
             var spanMarker = L.marker([midLat, midLng], { icon: spanIcon, interactive: false })
             .addTo(this.deviceLayerGroup);
+            this.spanLabelMarkers.push(spanMarker);
             
             // 存储标签引用，关联到两端设备，方便移动时隐藏
             if (!this.deviceSpanLabels[currentDevice.id]) this.deviceSpanLabels[currentDevice.id] = [];
@@ -1401,12 +1458,236 @@ export default {
         }
       }
       // 重绘后恢复选中态对应的层级
+      this.deviceMap = deviceMap;
+      this.topLevelDeviceIds = topLevelDevices.map(function(item) { return String(item.id); });
+      this.prevChildrenMap = prevChildrenMap;
+      this.prevTopLevelById = prevTopLevelById;
+
+      this.refreshMarkerVisibility();
       this.applySelectedMarkerZIndex();
+      setTimeout(function() {
+        self.refreshMarkerVisibility();
+        self.applySelectedMarkerZIndex();
+      }, 100);
     },
 
     /** 监听选中设备变化，调整 marker 层级 */
+    normalizeDeviceId(value) {
+      if (value === null || value === undefined || value === '') return '';
+      return String(value);
+    },
+
+    isMarkerSamplingActive() {
+      if (!this.map) return false;
+      var count = 0;
+      for (var id in this.deviceMarkers) {
+        if (this.deviceMarkers[id]) count++;
+      }
+      return count > this.markerMaxVisibleCount && this.map.getZoom() < this.markerFullDisplayZoom;
+    },
+
+    isEndpointOnlyMode() {
+      if (!this.map) return false;
+      return this.map.getZoom() <= this.markerEndpointOnlyZoom;
+    },
+
+    getTopLevelId(deviceId) {
+      var currentId = this.normalizeDeviceId(deviceId);
+      var maxDepth = 20;
+      while (currentId && this.deviceMap[currentId] && this.deviceMap[currentId].parent_id && maxDepth-- > 0) {
+        var parentId = this.normalizeDeviceId(this.deviceMap[currentId].parent_id);
+        if (!parentId || !this.deviceMap[parentId]) break;
+        currentId = parentId;
+      }
+      return currentId;
+    },
+
+    addDeviceContextToVisible(visible, deviceId) {
+      var id = this.normalizeDeviceId(deviceId);
+      if (!id) return;
+      visible[id] = true;
+
+      var topId = this.getTopLevelId(id);
+      if (topId) {
+        visible[topId] = true;
+
+        var prevId = this.prevTopLevelById[topId];
+        if (prevId) visible[prevId] = true;
+
+        var children = this.prevChildrenMap[topId] || [];
+        for (var i = 0; i < children.length; i++) {
+          visible[this.normalizeDeviceId(children[i])] = true;
+        }
+      }
+    },
+
+    addForcedVisibleDevices(visible) {
+      this.addDeviceContextToVisible(visible, this.selectedDeviceId);
+      this.addDeviceContextToVisible(visible, this.hiddenDeviceId);
+      for (var id in this.alwaysVisibleDeviceIds) {
+        if (this.alwaysVisibleDeviceIds[id]) {
+          this.addDeviceContextToVisible(visible, id);
+        }
+      }
+    },
+
+    samplePath(path, visible, visited, step, endpointOnly) {
+      if (!path || path.length === 0) return;
+
+      for (var i = 0; i < path.length; i++) {
+        visited[path[i]] = true;
+      }
+
+      visible[path[0]] = true;
+      visible[path[path.length - 1]] = true;
+      if (endpointOnly) return;
+
+      for (var j = 0; j < path.length; j += step) {
+        visible[path[j]] = true;
+      }
+    },
+
+    addSampledPathsFrom(rootId, path, visible, visited, active, step, maxDepth, endpointOnly) {
+      var id = this.normalizeDeviceId(rootId);
+      if (!id || !this.deviceMarkers[id]) return;
+
+      var nextPath = path.slice();
+      nextPath.push(id);
+
+      if (active[id] || maxDepth <= 0) {
+        this.samplePath(nextPath, visible, visited, step, endpointOnly);
+        return;
+      }
+
+      active[id] = true;
+      visited[id] = true;
+
+      var children = this.prevChildrenMap[id] || [];
+      var hasChildPath = false;
+      for (var i = 0; i < children.length; i++) {
+        var childId = this.normalizeDeviceId(children[i]);
+        if (!childId || !this.deviceMarkers[childId]) continue;
+        hasChildPath = true;
+        this.addSampledPathsFrom(childId, nextPath, visible, visited, active, step, maxDepth - 1, endpointOnly);
+      }
+
+      if (!hasChildPath) {
+        this.samplePath(nextPath, visible, visited, step, endpointOnly);
+      }
+
+      active[id] = false;
+    },
+
+    buildVisibleDeviceIdMap() {
+      var visible = {};
+      var allMarkerIds = [];
+      for (var id in this.deviceMarkers) {
+        if (this.deviceMarkers[id]) allMarkerIds.push(String(id));
+      }
+
+      if (allMarkerIds.length === 0) return visible;
+
+      var endpointOnly = this.isEndpointOnlyMode();
+
+      if (!endpointOnly && !this.isMarkerSamplingActive()) {
+        for (var i = 0; i < allMarkerIds.length; i++) {
+          visible[allMarkerIds[i]] = true;
+        }
+        return visible;
+      }
+
+      var topIds = [];
+      for (var t = 0; t < this.topLevelDeviceIds.length; t++) {
+        var topId = this.normalizeDeviceId(this.topLevelDeviceIds[t]);
+        if (topId && this.deviceMarkers[topId]) topIds.push(topId);
+      }
+
+      var effectiveCount = topIds.length || allMarkerIds.length;
+      var step = Math.max(1, Math.ceil(effectiveCount / this.markerMaxVisibleCount));
+      var roots = [];
+      var visited = {};
+
+      if (topIds.length === 0) {
+        visible[allMarkerIds[0]] = true;
+        visible[allMarkerIds[allMarkerIds.length - 1]] = true;
+        if (endpointOnly) return visible;
+        for (var ai = 0; ai < allMarkerIds.length; ai += step) {
+          visible[allMarkerIds[ai]] = true;
+        }
+        this.addForcedVisibleDevices(visible);
+        return visible;
+      }
+
+      for (var r = 0; r < topIds.length; r++) {
+        if (!this.prevTopLevelById[topIds[r]]) roots.push(topIds[r]);
+      }
+      if (roots.length === 0 && topIds.length > 0) roots.push(topIds[0]);
+
+      for (var ri = 0; ri < roots.length; ri++) {
+        this.addSampledPathsFrom(roots[ri], [], visible, visited, {}, step, effectiveCount + 5, endpointOnly);
+      }
+
+      for (var ti = 0; ti < topIds.length; ti++) {
+        if (!visited[topIds[ti]]) {
+          this.addSampledPathsFrom(topIds[ti], [], visible, visited, {}, step, effectiveCount + 5, endpointOnly);
+        }
+      }
+
+      if (endpointOnly) return visible;
+
+      for (var branchId in this.prevChildrenMap) {
+        if ((this.prevChildrenMap[branchId] || []).length > 1) {
+          visible[String(branchId)] = true;
+        }
+      }
+
+      this.addForcedVisibleDevices(visible);
+      return visible;
+    },
+
+    setLayerDomVisible(layer, visible) {
+      if (!layer) return;
+      var el = layer.getElement ? layer.getElement() : null;
+      if (el) {
+        el.style.display = visible ? '' : 'none';
+        return;
+      }
+
+      if (!visible) {
+        setTimeout(function() {
+          var delayedEl = layer.getElement ? layer.getElement() : null;
+          if (delayedEl) delayedEl.style.display = 'none';
+        }, 100);
+      }
+    },
+
+    refreshSpanLabelVisibility() {
+      var visible = !this.isMarkerSamplingActive();
+      for (var i = 0; i < this.spanLabelMarkers.length; i++) {
+        this.setLayerDomVisible(this.spanLabelMarkers[i], visible);
+      }
+    },
+
+    refreshMarkerVisibility() {
+      if (!this.map) return;
+
+      var visible = this.buildVisibleDeviceIdMap();
+      this.visibleSampledDeviceIds = visible;
+
+      for (var id in this.deviceMarkers) {
+        var shouldShow = !!visible[id];
+        if (this.hiddenDeviceId && String(id) === String(this.hiddenDeviceId)) {
+          shouldShow = false;
+        }
+        this.setLayerDomVisible(this.deviceMarkers[id], shouldShow);
+      }
+
+      this.refreshSpanLabelVisibility();
+    },
+
     onSelectedDeviceIdChange(newValue) {
       this.selectedDeviceId = newValue ? String(newValue) : '';
+      this.refreshMarkerVisibility();
       this.applySelectedMarkerZIndex();
     },
     
@@ -1465,36 +1746,15 @@ export default {
     /** 监听移动设备ID变化，隐藏/显示对应marker和连线 */
     onMovingDeviceIdChange(newValue) {
       if (!this.map) return;
-
-      // 恢复之前隐藏的设备
-      if (this.hiddenDeviceId && this.hiddenDeviceId !== newValue) {
-        this.setDeviceVisible(this.hiddenDeviceId, true);
-      }
-
-      if (newValue) {
-        this.setDeviceVisible(newValue, false);
-        this.hiddenDeviceId = newValue;
-      } else {
-        this.hiddenDeviceId = null;
-      }
+      this.hiddenDeviceId = newValue ? String(newValue) : null;
+      this.refreshMarkerVisibility();
+      this.applySelectedMarkerZIndex();
     },
 
     /** 设置指定设备的 marker 和关联连线的可见性 */
     setDeviceVisible(deviceId, visible) {
       var marker = this.deviceMarkers[deviceId];
-      if (marker) {
-        var el = marker.getElement();
-        if (el) {
-          el.style.display = visible ? '' : 'none';
-        } else if (!visible) {
-          // marker 可能尚未渲染（flyTo 动画中），延迟重试
-          var self = this;
-          setTimeout(function() {
-            var el2 = marker.getElement();
-            if (el2) el2.style.display = 'none';
-          }, 600);
-        }
-      }
+      this.setLayerDomVisible(marker, visible);
 
       // 连线和距离标签不隐藏
 
@@ -1542,6 +1802,13 @@ export default {
     onBlinkDeviceIdChange(newValue) {
       if (!newValue || !this.map) return;
       var self = this;
+      var blinkId = this.normalizeDeviceId(newValue.id);
+      if (blinkId) {
+        this.alwaysVisibleDeviceIds = {};
+        this.alwaysVisibleDeviceIds[blinkId] = true;
+        this.refreshMarkerVisibility();
+        this.applySelectedMarkerZIndex();
+      }
       // flyTo duration 约 0.5 s，延迟 700 ms 确保地图稳定、marker 已渲染
       setTimeout(function() {
         self._blinkDeviceName(newValue.id);
@@ -1553,6 +1820,7 @@ export default {
       var self = this;
       var marker = this.deviceMarkers[deviceId];
       if (!marker) return;
+      this.setLayerDomVisible(marker, true);
 
       var el = marker.getElement ? marker.getElement() : null;
       if (!el) {

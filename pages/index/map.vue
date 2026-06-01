@@ -1407,8 +1407,8 @@ export default {
           }
 
           var polylineOptions = {
-            color: '#03da6b',
-            weight: 2,
+            color: '#ff2d8f',
+            weight: 4,
             opacity: 1
           };
           if (isCable) {

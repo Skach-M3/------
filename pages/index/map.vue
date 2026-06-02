@@ -668,7 +668,10 @@ const showDeviceNames = ref(true);
 const markerDisplayConfig = {
   maxVisibleCount: 40,
   fullDisplayZoom: 15,
-  endpointOnlyZoom: 11
+  endpointOnlyZoom: 11,
+  scaleBaseZoom: 13,
+  minScale: 0.35,
+  maxScale: 1
 };
 
 
@@ -997,8 +1000,13 @@ export default {
       markerMaxVisibleCount: 60,
       markerFullDisplayZoom: 16,
       markerEndpointOnlyZoom: 10,
+      markerScaleBaseZoom: 16,
+      markerMinScale: 0.35,
+      markerMaxScale: 1,
+      lastMarkerScale: null,
       hiddenDeviceId: null, // 当前被隐藏的设备ID
       selectedDeviceId: '', // 当前选中的设备ID（用于抬高 zIndex）
+      lastSelectedMarkerId: '',
     }
   },
   mounted() {
@@ -1009,6 +1017,10 @@ export default {
       background: transparent !important;
       border: none !important;
       overflow: visible !important;
+      }
+      .device-marker-content {
+      transform-origin: 14px 34px;
+      will-change: transform;
       }
     `;
     document.head.appendChild(style);
@@ -1061,6 +1073,7 @@ export default {
       });
 
       this.map.on('zoomend', () => {
+        this.refreshMarkerScale();
         this.refreshMarkerVisibility();
         this.applySelectedMarkerZIndex();
       });
@@ -1184,6 +1197,9 @@ export default {
       var maxVisibleCount = Number(newValue.maxVisibleCount);
       var fullDisplayZoom = Number(newValue.fullDisplayZoom);
       var endpointOnlyZoom = Number(newValue.endpointOnlyZoom);
+      var scaleBaseZoom = Number(newValue.scaleBaseZoom);
+      var minScale = Number(newValue.minScale);
+      var maxScale = Number(newValue.maxScale);
 
       if (!isNaN(maxVisibleCount) && maxVisibleCount > 0) {
         this.markerMaxVisibleCount = Math.floor(maxVisibleCount);
@@ -1194,7 +1210,17 @@ export default {
       if (!isNaN(endpointOnlyZoom) && endpointOnlyZoom > 0) {
         this.markerEndpointOnlyZoom = endpointOnlyZoom;
       }
+      if (!isNaN(scaleBaseZoom) && scaleBaseZoom > 0) {
+        this.markerScaleBaseZoom = scaleBaseZoom;
+      }
+      if (!isNaN(minScale) && minScale > 0) {
+        this.markerMinScale = minScale;
+      }
+      if (!isNaN(maxScale) && maxScale > 0) {
+        this.markerMaxScale = maxScale;
+      }
 
+      this.refreshMarkerScale(true);
       this.refreshMarkerVisibility();
       this.applySelectedMarkerZIndex();
     },
@@ -1268,7 +1294,7 @@ export default {
         }
         // 倒水滴气泡容器 + 右侧文字
         var html = ''
-          + '<div style="display:flex;align-items:flex-start;pointer-events:auto;">'
+          + '<div class="device-marker-content" style="display:flex;align-items:flex-start;pointer-events:auto;transform:scale(1);">'
           +  '<div style="'
           +   'position:relative;'
           +   'width:28px;height:28px;'
@@ -1463,11 +1489,13 @@ export default {
       this.prevChildrenMap = prevChildrenMap;
       this.prevTopLevelById = prevTopLevelById;
 
+      this.refreshMarkerScale(true);
       this.refreshMarkerVisibility();
-      this.applySelectedMarkerZIndex();
+      this.applySelectedMarkerZIndex(true);
       setTimeout(function() {
+        self.refreshMarkerScale(true);
         self.refreshMarkerVisibility();
-        self.applySelectedMarkerZIndex();
+        self.applySelectedMarkerZIndex(true);
       }, 100);
     },
 
@@ -1475,6 +1503,43 @@ export default {
     normalizeDeviceId(value) {
       if (value === null || value === undefined || value === '') return '';
       return String(value);
+    },
+
+    getMarkerScale() {
+      if (!this.map) return 1;
+
+      var scale = Math.pow(2, this.map.getZoom() - this.markerScaleBaseZoom);
+      var minScale = Number(this.markerMinScale);
+      var maxScale = Number(this.markerMaxScale);
+
+      if (isNaN(minScale) || minScale <= 0) minScale = 0.35;
+      if (isNaN(maxScale) || maxScale <= 0) maxScale = 1;
+
+      var lower = Math.min(minScale, maxScale);
+      var upper = Math.max(minScale, maxScale);
+      return Math.max(lower, Math.min(upper, scale));
+    },
+
+    refreshMarkerScale(force) {
+      if (!this.map) return;
+
+      var scale = this.getMarkerScale();
+      if (!force && scale === this.lastMarkerScale) return;
+
+      this.lastMarkerScale = scale;
+      for (var id in this.deviceMarkers) {
+        var marker = this.deviceMarkers[id];
+        if (!marker || !marker.getElement) continue;
+
+        var el = marker.getElement();
+        if (!el) continue;
+
+        var content = el.querySelector('.device-marker-content');
+        if (!content) continue;
+
+        content.style.transformOrigin = '14px 34px';
+        content.style.transform = 'scale(' + scale + ')';
+      }
     },
 
     isMarkerSamplingActive() {
@@ -1691,44 +1756,68 @@ export default {
       this.applySelectedMarkerZIndex();
     },
     
-    /** 选中设备抬高 zIndex 并加白色描边，取消选中恢复 */
-    applySelectedMarkerZIndex() {
+    resetMarkerSelectionStyle(deviceId) {
       var DEFAULT_SHADOW = '-2px 2px 4px rgba(0,0,0,0.3)';
+      var id = this.normalizeDeviceId(deviceId);
+      if (!id || !this.deviceMarkers[id]) return;
+
+      var marker = this.deviceMarkers[id];
+      if (marker.setZIndexOffset) marker.setZIndexOffset(0);
+
+      var el = marker.getElement ? marker.getElement() : null;
+      if (el) {
+        var bg = el.querySelector('.device-pin-bg');
+        if (bg) bg.style.boxShadow = DEFAULT_SHADOW;
+      }
+    },
+
+    applyMarkerSelectionStyle(deviceId) {
       var SELECTED_SHADOW = '0 0 0 2px #fff, -2px 2px 6px rgba(0,0,0,0.4)';
+      var id = this.normalizeDeviceId(deviceId);
+      if (!id || !this.deviceMarkers[id]) return;
 
-      // 先全部恢复默认
-      for (var id in this.deviceMarkers) {
-        var m = this.deviceMarkers[id];
-        if (!m) continue;
-        if (m.setZIndexOffset) m.setZIndexOffset(0);
+      var marker = this.deviceMarkers[id];
+      if (marker.setZIndexOffset) marker.setZIndexOffset(1000);
 
-        var el = m.getElement ? m.getElement() : null;
-        if (el) {
-          var bg = el.querySelector('.device-pin-bg');
-          if (bg) bg.style.boxShadow = DEFAULT_SHADOW;
+      var self = this;
+      var applyRing = function () {
+        var selEl = marker.getElement ? marker.getElement() : null;
+        if (selEl) {
+          var selBg = selEl.querySelector('.device-pin-bg');
+          if (selBg) selBg.style.boxShadow = SELECTED_SHADOW;
+          return true;
         }
+        return false;
+      };
+
+      if (!applyRing()) {
+        // DOM 尚未挂载，延迟重试
+        setTimeout(function () {
+          if (self.selectedDeviceId === id) applyRing();
+        }, 200);
+      }
+    },
+
+    /** 选中设备抬高 zIndex 并加白色描边，取消选中恢复 */
+    applySelectedMarkerZIndex(force) {
+      var selectedId = this.normalizeDeviceId(this.selectedDeviceId);
+      var previousId = this.normalizeDeviceId(this.lastSelectedMarkerId);
+
+      if (!force && previousId === selectedId) return;
+
+      if (force) {
+        for (var id in this.deviceMarkers) {
+          this.resetMarkerSelectionStyle(id);
+        }
+      } else if (previousId && previousId !== selectedId) {
+        this.resetMarkerSelectionStyle(previousId);
       }
 
-      // 再应用选中态
-      if (this.selectedDeviceId && this.deviceMarkers[this.selectedDeviceId]) {
-        var selMarker = this.deviceMarkers[this.selectedDeviceId];
-        if (selMarker.setZIndexOffset) selMarker.setZIndexOffset(1000);
-
-        var applyRing = function (marker) {
-          var selEl = marker.getElement ? marker.getElement() : null;
-          if (selEl) {
-            var selBg = selEl.querySelector('.device-pin-bg');
-            if (selBg) selBg.style.boxShadow = SELECTED_SHADOW;
-            return true;
-          }
-          return false;
-        };
-
-        if (!applyRing(selMarker)) {
-          // DOM 尚未挂载，延迟重试
-          setTimeout(function () { applyRing(selMarker); }, 200);
-        }
+      if (selectedId) {
+        this.applyMarkerSelectionStyle(selectedId);
       }
+
+      this.lastSelectedMarkerId = selectedId;
     },
 
     onConfirmMoveChange(newValue) {

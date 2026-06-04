@@ -217,6 +217,7 @@ function onClearDebugLocation() {
 
 // 用户当前真实位置（独立于 mapConfig.center）
 const userLocation = ref({ lat: 0, lng: 0 });
+const isMovingDevice = ref(false);
 
 // ========== 持续定位 ==========
 const isMapPageVisible = ref(false);
@@ -226,6 +227,7 @@ let locationWatchToken = 0;
 
 const handleLocationChange = (res: any) => {
   if (!res || typeof res.latitude !== 'number' || typeof res.longitude !== 'number') return;
+  if (isMovingDevice.value) return;
 
   userLocation.value = { lat: res.latitude, lng: res.longitude };
   // Update only the blue location marker; do not recenter the map view.
@@ -282,6 +284,16 @@ const stopLocationWatch = () => {
   isLocationWatchStarted.value = false;
 };
 
+const pauseLocationWatchForMove = () => {
+  stopLocationWatch();
+};
+
+const resumeLocationWatchAfterMove = () => {
+  if (isMapPageVisible.value && !isInitialLocating.value && !isMovingDevice.value) {
+    startLocationWatch();
+  }
+};
+
 // Haversine 公式计算两点距离，返回格式化字符串
 const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): string => {
   const R = 6371000; // 地球半径（米）
@@ -310,8 +322,6 @@ const currentDeviceInfo = ref({
   lat: '',
   deviceType: ''
 });
-
-const isMovingDevice = ref(false)
 
 const confirmMoveProp = ref(0);
 // 触发地图上设备名称闪烁
@@ -342,6 +352,7 @@ const cancelMove = () => {
   }
 
   movingDeviceOriginal.value = null;
+  resumeLocationWatchAfterMove();
   console.log('已取消移动');
 };
 // 确定按钮点击事件
@@ -383,6 +394,7 @@ const exitMoveMode = () => {
   showDevicePanel.value = false;
   movingDeviceIdProp.value = '';
   movingDeviceOriginal.value = null;
+  resumeLocationWatchAfterMove();
 };
 
 // 面板相关的预留操作方法
@@ -552,15 +564,24 @@ const handleDetails = () => {
 const handleMove = () => {
   console.log('点击了移动', currentDeviceInfo.value);
   const info = currentDeviceInfo.value;
+  const lat = parseFloat(info.lat);
+  const lng = parseFloat(info.lng);
+
+  if (!info.id || isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
+    uni.showToast({ title: '设备坐标无效', icon: 'none' });
+    return;
+  }
 
   // 保存原始设备信息，供取消时飞回
   movingDeviceOriginal.value = {
     id: info.id,
-    lat: parseFloat(info.lat),
-    lng: parseFloat(info.lng),
+    lat,
+    lng,
     name: info.name,
     deviceType: info.deviceType
   };
+
+  pauseLocationWatchForMove();
 
   // 进入移动模式
   isMovingDevice.value = true;
@@ -569,7 +590,7 @@ const handleMove = () => {
   movingDeviceIdProp.value = info.id;
 
   // 飞到设备位置（十字准星对准）
-  mapConfig.center = [parseFloat(info.lat), parseFloat(info.lng)];
+  mapConfig.center = [lat, lng];
   mapConfig.actionType = 'flyTo';
   mapConfig.actionId++;
 };
@@ -671,7 +692,9 @@ const markerDisplayConfig = {
   endpointOnlyZoom: 11,
   scaleBaseZoom: 13,
   minScale: 0.35,
-  maxScale: 1
+  maxScale: 1,
+  moveMaxVisibleCount: 24,
+  keepSpanLabelsInMove: true
 };
 
 
@@ -932,7 +955,7 @@ onLoad((options) => {
     },
     complete: () => {
       isInitialLocating.value = false;
-      if (isMapPageVisible.value) {
+      if (isMapPageVisible.value && !isMovingDevice.value) {
         startLocationWatch();
       }
     }
@@ -943,7 +966,7 @@ onLoad((options) => {
 onShow(() => {
   isMapPageVisible.value = true;
   loadDevices();
-  if (!isInitialLocating.value) {
+  if (!isInitialLocating.value && !isMovingDevice.value) {
     startLocationWatch();
   }
 });
@@ -1003,6 +1026,8 @@ export default {
       markerScaleBaseZoom: 16,
       markerMinScale: 0.35,
       markerMaxScale: 1,
+      moveMaxVisibleCount: 24,
+      keepSpanLabelsInMove: true,
       lastMarkerScale: null,
       hiddenDeviceId: null, // 当前被隐藏的设备ID
       selectedDeviceId: '', // 当前选中的设备ID（用于抬高 zIndex）
@@ -1059,7 +1084,8 @@ export default {
 
       this.map = L.map('map', {
         zoomControl: false,
-        attributionControl: false
+        attributionControl: false,
+        preferCanvas: true
       }).setView(initialCenter, initialZoom);
 
       this.updateLayers((this.pendingConfig && this.pendingConfig.layerType) || 'img');
@@ -1172,23 +1198,25 @@ export default {
       }).addTo(this.map);
     },
 
+    refreshDeviceNameVisibility() {
+      if (!this.map) return;
+
+      var visible = this.showNames && !this.isMoveLightMode();
+      for (var id in this.deviceMarkers) {
+        var marker = this.deviceMarkers[id];
+        var el = marker && marker.getElement ? marker.getElement() : null;
+        if (!el) continue;
+
+        var nameSpan = el.querySelector('.device-name-label');
+        if (nameSpan) {
+          nameSpan.style.display = visible ? 'inline' : 'none';
+        }
+      }
+    },
+
     onShowNamesChange(newValue) {
       this.showNames = newValue;
-      // 拿到当前设备数据重新绘制
-      if (this.map && this.deviceLayerGroup) {
-        // 遍历所有 marker，切换名称 span 的显示
-        this.deviceLayerGroup.eachLayer(function(layer) {
-          if (layer.getElement) {
-            var el = layer.getElement();
-            if (el) {
-              var nameSpan = el.querySelector('.device-name-label');
-              if (nameSpan) {
-                nameSpan.style.display = newValue ? 'inline' : 'none';
-              }
-            }
-          }
-        });
-      }
+      this.refreshDeviceNameVisibility();
     },
 
     onMarkerDisplayConfigChange(newValue) {
@@ -1200,6 +1228,7 @@ export default {
       var scaleBaseZoom = Number(newValue.scaleBaseZoom);
       var minScale = Number(newValue.minScale);
       var maxScale = Number(newValue.maxScale);
+      var moveMaxVisibleCount = Number(newValue.moveMaxVisibleCount);
 
       if (!isNaN(maxVisibleCount) && maxVisibleCount > 0) {
         this.markerMaxVisibleCount = Math.floor(maxVisibleCount);
@@ -1218,6 +1247,12 @@ export default {
       }
       if (!isNaN(maxScale) && maxScale > 0) {
         this.markerMaxScale = maxScale;
+      }
+      if (!isNaN(moveMaxVisibleCount) && moveMaxVisibleCount > 0) {
+        this.moveMaxVisibleCount = Math.floor(moveMaxVisibleCount);
+      }
+      if (typeof newValue.keepSpanLabelsInMove === 'boolean') {
+        this.keepSpanLabelsInMove = newValue.keepSpanLabelsInMove;
       }
 
       this.refreshMarkerScale(true);
@@ -1320,7 +1355,7 @@ export default {
           +  '</div>'
           // 右侧文字
           + '<span class="device-name-label" style="'
-          +  'display:' + (self.showNames ? 'inline' : 'none') + ';'
+          +  'display:' + ((self.showNames && !self.isMoveLightMode()) ? 'inline' : 'none') + ';'
           +  'margin-left:6px;margin-top:4px;'
           +  'white-space:nowrap;'
           +  'color:#fff;font-size:12px;font-weight:bold;'
@@ -1542,12 +1577,30 @@ export default {
       }
     },
 
+    isMoveLightMode() {
+      return !!this.hiddenDeviceId;
+    },
+
+    getEffectiveMarkerMaxVisibleCount() {
+      var maxCount = this.isMoveLightMode()
+        ? this.moveMaxVisibleCount
+        : this.markerMaxVisibleCount;
+
+      maxCount = Number(maxCount);
+      return (!isNaN(maxCount) && maxCount > 0) ? Math.floor(maxCount) : this.markerMaxVisibleCount;
+    },
+
     isMarkerSamplingActive() {
       if (!this.map) return false;
       var count = 0;
       for (var id in this.deviceMarkers) {
         if (this.deviceMarkers[id]) count++;
       }
+
+      if (this.isMoveLightMode()) {
+        return count > this.getEffectiveMarkerMaxVisibleCount();
+      }
+
       return count > this.markerMaxVisibleCount && this.map.getZoom() < this.markerFullDisplayZoom;
     },
 
@@ -1668,7 +1721,8 @@ export default {
       }
 
       var effectiveCount = topIds.length || allMarkerIds.length;
-      var step = Math.max(1, Math.ceil(effectiveCount / this.markerMaxVisibleCount));
+      var maxVisibleCount = this.getEffectiveMarkerMaxVisibleCount();
+      var step = Math.max(1, Math.ceil(effectiveCount / maxVisibleCount));
       var roots = [];
       var visited = {};
 
@@ -1727,7 +1781,9 @@ export default {
     },
 
     refreshSpanLabelVisibility() {
-      var visible = !this.isMarkerSamplingActive();
+      var visible = (this.isMoveLightMode() && this.keepSpanLabelsInMove)
+        ? true
+        : !this.isMarkerSamplingActive();
       for (var i = 0; i < this.spanLabelMarkers.length; i++) {
         this.setLayerDomVisible(this.spanLabelMarkers[i], visible);
       }
@@ -1748,6 +1804,7 @@ export default {
       }
 
       this.refreshSpanLabelVisibility();
+      this.refreshDeviceNameVisibility();
     },
 
     onSelectedDeviceIdChange(newValue) {
@@ -1945,7 +2002,7 @@ export default {
           clearInterval(timer);
           // 动画结束后恢复颜色，并按当前"名称显示"开关状态决定是否隐藏
           nameSpan.style.color = originalColor;
-          nameSpan.style.display = self.showNames ? 'inline' : 'none';
+          nameSpan.style.display = (self.showNames && !self.isMoveLightMode()) ? 'inline' : 'none';
         }
       }, interval);
     },

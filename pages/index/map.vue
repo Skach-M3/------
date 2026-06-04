@@ -552,6 +552,8 @@ const handleDetails = () => {
     url = `/pages/device/edit?lineId=${lineId.value}&lineName=${encodeURIComponent(lineName.value)}&deviceType=${info.deviceType}&lat=${Number(info.lat).toFixed(8)}&lng=${Number(info.lng).toFixed(8)}&deviceId=${info.id}`;
   }
 
+  markDevicesDirty();
+
   uni.navigateTo({
     url,
     fail: (err) => {
@@ -686,9 +688,10 @@ const lineName = ref('');
 // 名称显示开关，默认显示
 const showDeviceNames = ref(true);
 
+// 标记显示配置
 const markerDisplayConfig = {
   maxVisibleCount: 40,
-  fullDisplayZoom: 15,
+  fullDisplayZoom: 16,
   endpointOnlyZoom: 11,
   scaleBaseZoom: 13,
   minScale: 0.35,
@@ -906,6 +909,8 @@ const handleFabClick = (item: any) => {
   }
 
 
+  markDevicesDirty();
+
   uni.navigateTo({
     url,
     fail: (err) => {
@@ -920,9 +925,31 @@ const loadDevices = async () => {
     const devices = await deviceDAO.findAllByLine(lineId.value);
     // 直接赋值给独立 ref，触发 renderjs 的 onDevicesChange
     devicesProp.value = devices || [];
+    devicesLoaded.value = true;
+    loadedDevicesLineId.value = lineId.value;
+    devicesDirty.value = false;
   } catch (e) {
     console.error('加载设备列表失败:', e);
   }
+};
+
+const devicesLoaded = ref(false);
+const loadedDevicesLineId = ref('');
+const devicesDirty = ref(true);
+
+const markDevicesDirty = () => {
+  devicesDirty.value = true;
+};
+
+const shouldReloadDevices = () => {
+  return !devicesLoaded.value
+    || loadedDevicesLineId.value !== lineId.value
+    || devicesDirty.value;
+};
+
+const loadDevicesIfNeeded = async () => {
+  if (!shouldReloadDevices()) return;
+  await loadDevices();
 };
 
 onLoad((options) => {
@@ -965,7 +992,7 @@ onLoad((options) => {
 // ← 新增：每次页面显示时重新加载设备（包括从编辑页返回时）
 onShow(() => {
   isMapPageVisible.value = true;
-  loadDevices();
+  loadDevicesIfNeeded();
   if (!isInitialLocating.value && !isMovingDevice.value) {
     startLocationWatch();
   }
@@ -1029,6 +1056,7 @@ export default {
       moveMaxVisibleCount: 24,
       keepSpanLabelsInMove: true,
       lastMarkerScale: null,
+      lastActionId: null,
       hiddenDeviceId: null, // 当前被隐藏的设备ID
       selectedDeviceId: '', // 当前选中的设备ID（用于抬高 zIndex）
       lastSelectedMarkerId: '',
@@ -1108,7 +1136,12 @@ export default {
         if (this.pendingConfig.actionType === 'initLocate' || this.pendingConfig.actionType === 'locate') {
           this.drawLocationMarker(this.pendingConfig.center);
         }
+        if (this.pendingConfig.actionId !== undefined && this.pendingConfig.actionId !== null) {
+          this.lastActionId = this.pendingConfig.actionId;
+        }
         this.pendingConfig = null;
+      } else {
+        this.lastActionId = 0;
       }
 
       // ← 新增：地图初始化完成后，绘制已暂存的设备数据
@@ -1173,6 +1206,12 @@ export default {
         return;
       }
 
+      var actionId = newValue.actionId;
+      if (actionId !== undefined && actionId !== null) {
+        if (this.lastActionId === actionId) return;
+        this.lastActionId = actionId;
+      }
+
       this.applyConfig(newValue);
     },
 
@@ -1187,7 +1226,8 @@ export default {
 
     drawLocationMarker(center) {
       if (this.locationMarker) {
-        this.map.removeLayer(this.locationMarker);
+        this.locationMarker.setLatLng(center);
+        return;
       }
       this.locationMarker = L.circleMarker(center, {
         color: '#fff',

@@ -18,7 +18,8 @@
       :change:confirmMoveProp="mapModule.onConfirmMoveChange" :blinkDeviceIdProp="blinkDeviceIdProp"
       :change:blinkDeviceIdProp="mapModule.onBlinkDeviceIdChange" :selectedDeviceIdProp="selectedDeviceIdProp"
       :change:selectedDeviceIdProp="mapModule.onSelectedDeviceIdChange" :markerDisplayConfigProp="markerDisplayConfig"
-      :change:markerDisplayConfigProp="mapModule.onMarkerDisplayConfigChange"></view>
+      :change:markerDisplayConfigProp="mapModule.onMarkerDisplayConfigChange" :devicePatchProp="devicePatchProp"
+      :change:devicePatchProp="mapModule.onDevicePatchChange"></view>
 
     <!-- 移动模式 - 中心设备标记 -->
     <view v-if="isMovingDevice" class="move-center-pin">
@@ -324,6 +325,7 @@ const currentDeviceInfo = ref({
 });
 
 const confirmMoveProp = ref(0);
+const devicePatchProp = ref<any>(null);
 // 触发地图上设备名称闪烁
 const blinkDeviceIdProp = ref<{ id: string; ts: number } | null>(null);
 
@@ -335,6 +337,51 @@ const movingDeviceOriginal = ref<{
   deviceType: string;
 } | null>(null);
 const movingDeviceIdProp = ref('');
+const movedDeviceCoordinateOverrides = new Map<string, { lat: number; lng: number }>();
+
+const sendDevicePatch = (patch: any) => {
+  devicePatchProp.value = {
+    ...patch,
+    ts: Date.now()
+  };
+};
+
+const getCurrentReferenceLocation = () => {
+  if (DEBUG_ENABLED && debugLocation.lat !== null && debugLocation.lng !== null) {
+    return { lat: debugLocation.lat, lng: debugLocation.lng };
+  }
+  return { lat: userLocation.value.lat, lng: userLocation.value.lng };
+};
+
+const withMovedDeviceCoordinateOverride = (device: any) => {
+  if (!device) return device;
+  const override = movedDeviceCoordinateOverrides.get(String(device.id));
+  if (!override) return device;
+  return {
+    ...device,
+    latitude: String(override.lat),
+    longitude: String(override.lng)
+  };
+};
+
+const updateMovedDeviceLocalCache = (deviceId: string, lat: number, lng: number) => {
+  movedDeviceCoordinateOverrides.set(String(deviceId), { lat, lng });
+
+  if (String(currentDeviceInfo.value.id) === String(deviceId)) {
+    const refLoc = getCurrentReferenceLocation();
+    const dist = (refLoc.lat !== 0 || refLoc.lng !== 0)
+      ? calculateDistance(refLoc.lat, refLoc.lng, lat, lng)
+      : '未定位';
+
+    currentDeviceInfo.value = {
+      ...currentDeviceInfo.value,
+      distance: dist,
+      lng: lng.toFixed(8),
+      lat: lat.toFixed(8)
+    };
+  }
+};
+
 // 取消按钮点击事件
 const cancelMove = () => {
   // 退出移动模式
@@ -353,18 +400,15 @@ const cancelMove = () => {
 
   movingDeviceOriginal.value = null;
   resumeLocationWatchAfterMove();
-  console.log('已取消移动');
 };
 // 确定按钮点击事件
 const confirmMove = () => {
-  console.log('确认移动设备');
   if (!movingDeviceOriginal.value) return;
   // 触发 RenderJS 获取当前地图中心坐标
   confirmMoveProp.value = Date.now();
 };
 
 const onConfirmMoveResult = async (centerData: { lat: number; lng: number }) => {
-  console.log("onConfirmMoveResult", centerData);
   if (!movingDeviceOriginal.value) return;
 
   const deviceId = movingDeviceOriginal.value.id;
@@ -372,16 +416,20 @@ const onConfirmMoveResult = async (centerData: { lat: number; lng: number }) => 
   const newLat = centerData.lat;
 
   try {
-    // 更新本地数据库坐标
     await deviceDAO.updateCoordinates(deviceId, String(newLng), String(newLat));
 
     uni.showToast({ title: '设备移动成功', icon: 'success' });
 
-    // 重新从数据库加载设备列表 → 触发 RenderJS 重绘
-    await loadDevices();
-
-    // 退出移动模式
+    // 只更新当前移动设备及其相邻连线，避免全量重绘造成卡顿
+    updateMovedDeviceLocalCache(deviceId, newLat, newLng);
+    sendDevicePatch({
+      type: 'move',
+      id: deviceId,
+      lat: newLat,
+      lng: newLng
+    });
     exitMoveMode();
+
   } catch (err) {
     console.error('更新设备坐标失败', err);
     uni.showToast({ title: '保存失败，请重试', icon: 'none' });
@@ -400,8 +448,9 @@ const exitMoveMode = () => {
 // 面板相关的预留操作方法
 // 抽取公共方法：选中一个设备并飞过去
 const selectDevice = (device: any) => {
-  const lat = parseFloat(device.latitude);
-  const lng = parseFloat(device.longitude);
+  const displayDevice = withMovedDeviceCoordinateOverride(device);
+  const lat = parseFloat(displayDevice.latitude);
+  const lng = parseFloat(displayDevice.longitude);
 
   if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
     uni.showToast({ title: '该设备坐标无效', icon: 'none' });
@@ -423,12 +472,12 @@ const selectDevice = (device: any) => {
     : '未定位';
 
   currentDeviceInfo.value = {
-    id: device.id || '',
-    name: device.name || '未知设备',
+    id: displayDevice.id || '',
+    name: displayDevice.name || '未知设备',
     distance: dist,
     lng: lng.toFixed(8),
     lat: lat.toFixed(8),
-    deviceType: device.device_type || ''
+    deviceType: displayDevice.device_type || ''
   };
 
   // 飞到该设备位置
@@ -544,7 +593,6 @@ const handleNavigate = () => {
 
 const handleDetails = () => {
   const info = currentDeviceInfo.value;
-  console.log(info);
   let url;
   if (info.deviceType === 'station') {
     url = `/pages/device/edit_Station?lineId=${lineId.value}&lineName=${encodeURIComponent(lineName.value)}&deviceType=${info.deviceType}&lat=${Number(info.lat).toFixed(8)}&lng=${Number(info.lng).toFixed(8)}&deviceId=${info.id}`;
@@ -564,7 +612,6 @@ const handleDetails = () => {
 };
 
 const handleMove = () => {
-  console.log('点击了移动', currentDeviceInfo.value);
   const info = currentDeviceInfo.value;
   const lat = parseFloat(info.lat);
   const lng = parseFloat(info.lng);
@@ -786,7 +833,6 @@ const handleMapMessage = (data: any) => {
     // 如果正在移动设备，忽略其他设备的点击
     if (isMovingDevice.value) return;
     // 点击了设备图标
-    console.log('点击了设备:', data.device);
     const device = data.device;
     selectedDeviceIdProp.value = String(data.device?.id || '');
 
@@ -817,7 +863,6 @@ const handleMapMessage = (data: any) => {
   } else if (data.type === 'click') {
     // 移动模式下忽略地图空白点击
     if (isMovingDevice.value) return;
-    console.log(`点击坐标: ${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}`);
     // 点击地图时，清空选中设备
     selectedDeviceIdProp.value = '';
     // 点击地图时，关闭设备列表面板
@@ -925,6 +970,7 @@ const loadDevices = async () => {
     const devices = await deviceDAO.findAllByLine(lineId.value);
     // 直接赋值给独立 ref，触发 renderjs 的 onDevicesChange
     devicesProp.value = devices || [];
+    movedDeviceCoordinateOverrides.clear();
     devicesLoaded.value = true;
     loadedDevicesLineId.value = lineId.value;
     devicesDirty.value = false;
@@ -1224,6 +1270,13 @@ export default {
       }
     },
 
+    onDevicePatchChange(newValue) {
+      if (!newValue || !this.map) return;
+      if (newValue.type === 'move') {
+        this.applyMovePatch(newValue);
+      }
+    },
+
     drawLocationMarker(center) {
       if (this.locationMarker) {
         this.locationMarker.setLatLng(center);
@@ -1457,7 +1510,8 @@ export default {
           prev_id: device.prev_id,
           parent_id: device.parent_id,
           attributes: parsedAttrs,
-          device_type: device.device_type
+          device_type: device.device_type,
+          name: displayName
         };
         
         // 仅顶层设备参与连线
@@ -1658,6 +1712,260 @@ export default {
         currentId = parentId;
       }
       return currentId;
+    },
+
+    addUniqueLayer(list, layer) {
+      if (!layer) return;
+      if (list.indexOf(layer) === -1) list.push(layer);
+    },
+
+    layerInList(list, layer) {
+      if (!list || !layer) return false;
+      for (var i = 0; i < list.length; i++) {
+        if (list[i] === layer) return true;
+      }
+      return false;
+    },
+
+    removeMapLayer(layer) {
+      if (!layer || !this.map) return;
+      if (this.deviceLayerGroup && this.deviceLayerGroup.removeLayer) {
+        this.deviceLayerGroup.removeLayer(layer);
+        return;
+      }
+      if (this.map.removeLayer) this.map.removeLayer(layer);
+    },
+
+    removeLayersFromLookup(lookup, removedLayers, lookupIds) {
+      if (!lookup || !removedLayers || removedLayers.length === 0) return;
+      var ids = [];
+      if (lookupIds && lookupIds.length > 0) {
+        for (var lookupIndex = 0; lookupIndex < lookupIds.length; lookupIndex++) {
+          var lookupId = this.normalizeDeviceId(lookupIds[lookupIndex]);
+          if (lookupId && ids.indexOf(lookupId) === -1) ids.push(lookupId);
+        }
+      } else {
+        for (var lookupKey in lookup) {
+          ids.push(lookupKey);
+        }
+      }
+
+      for (var idIndex = 0; idIndex < ids.length; idIndex++) {
+        var id = ids[idIndex];
+        var layers = lookup[id] || [];
+        var kept = [];
+        for (var i = 0; i < layers.length; i++) {
+          if (!this.layerInList(removedLayers, layers[i])) kept.push(layers[i]);
+        }
+        if (kept.length > 0) {
+          lookup[id] = kept;
+        } else {
+          delete lookup[id];
+        }
+      }
+    },
+
+    removeEdgesForDevice(deviceId) {
+      var id = this.normalizeDeviceId(deviceId);
+      if (!id) return;
+
+      var relatedIds = [];
+      var connectedIds = this.getConnectedTopLevelIds(id);
+      for (var relatedIndex = 0; relatedIndex < connectedIds.length; relatedIndex++) {
+        var relatedId = this.normalizeDeviceId(connectedIds[relatedIndex]);
+        if (relatedId && relatedIds.indexOf(relatedId) === -1) relatedIds.push(relatedId);
+      }
+      if (relatedIds.indexOf(id) === -1) relatedIds.push(id);
+
+      var polylines = [];
+      var labels = [];
+      var sourcePolylines = this.devicePolylines[id] || [];
+      var sourceLabels = this.deviceSpanLabels[id] || [];
+
+      for (var i = 0; i < sourcePolylines.length; i++) {
+        this.addUniqueLayer(polylines, sourcePolylines[i]);
+      }
+      for (var j = 0; j < sourceLabels.length; j++) {
+        this.addUniqueLayer(labels, sourceLabels[j]);
+      }
+
+      for (var p = 0; p < polylines.length; p++) {
+        this.removeMapLayer(polylines[p]);
+      }
+      for (var l = 0; l < labels.length; l++) {
+        this.removeMapLayer(labels[l]);
+      }
+
+      this.removeLayersFromLookup(this.devicePolylines, polylines, relatedIds);
+      this.removeLayersFromLookup(this.deviceSpanLabels, labels, relatedIds);
+
+      if (labels.length > 0) {
+        for (var s = 0; s < labels.length; s++) {
+          var labelIndex = this.spanLabelMarkers.indexOf(labels[s]);
+          if (labelIndex !== -1) {
+            this.spanLabelMarkers.splice(labelIndex, 1);
+          }
+        }
+      }
+    },
+
+    drawEdgeBetween(prevDevice, currentDevice) {
+      if (!prevDevice || !currentDevice || !prevDevice.latlng || !currentDevice.latlng || !this.deviceLayerGroup) return;
+
+      var isCable = false;
+      var attrs = currentDevice.attributes || {};
+      if (currentDevice.device_type === 'pole' && attrs.wire_type === '电缆') {
+        isCable = true;
+      } else if (currentDevice.device_type === 'cable_turning_point' && attrs.cable_type === '电缆') {
+        isCable = true;
+      }
+
+      var polylineOptions = {
+        color: '#ff2d8f',
+        weight: 4,
+        opacity: 1
+      };
+      if (isCable) {
+        polylineOptions.dashArray = '6, 6';
+      }
+
+      var polyline = L.polyline([prevDevice.latlng, currentDevice.latlng], polylineOptions)
+        .addTo(this.deviceLayerGroup);
+
+      if (!this.devicePolylines[currentDevice.id]) this.devicePolylines[currentDevice.id] = [];
+      this.devicePolylines[currentDevice.id].push(polyline);
+      if (!this.devicePolylines[prevDevice.id]) this.devicePolylines[prevDevice.id] = [];
+      this.devicePolylines[prevDevice.id].push(polyline);
+
+      var spanLength = haversineDistance(
+        prevDevice.latlng[0], prevDevice.latlng[1],
+        currentDevice.latlng[0], currentDevice.latlng[1]
+      );
+      var spanInt = Math.round(spanLength);
+      if (spanInt <= 0) return;
+
+      var midLat = (prevDevice.latlng[0] + currentDevice.latlng[0]) / 2;
+      var midLng = (prevDevice.latlng[1] + currentDevice.latlng[1]) / 2;
+      var spanHtml = '<div style="transform:translate(-50%,-50%);display:inline-block;">'
+        + '<span style="'
+        +   'white-space:nowrap;color:#fff;'
+        +   'font-size:10px;font-weight:bold;'
+        +   'text-shadow:-1px -1px 0 #333,1px -1px 0 #333,-1px 1px 0 #333,1px 1px 0 #333;'
+        + '">' + spanInt + ' m</span>'
+        + '</div>';
+      var spanIcon = L.divIcon({
+        className: 'device-marker-wrapper',
+        html: spanHtml,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0]
+      });
+      var spanMarker = L.marker(
+        [midLat, midLng],
+        { icon: spanIcon, interactive: false }
+      ).addTo(this.deviceLayerGroup);
+      this.spanLabelMarkers.push(spanMarker);
+
+      if (!this.deviceSpanLabels[currentDevice.id]) this.deviceSpanLabels[currentDevice.id] = [];
+      this.deviceSpanLabels[currentDevice.id].push(spanMarker);
+      if (!this.deviceSpanLabels[prevDevice.id]) this.deviceSpanLabels[prevDevice.id] = [];
+      this.deviceSpanLabels[prevDevice.id].push(spanMarker);
+    },
+
+    getConnectedTopLevelIds(deviceId) {
+      var topId = this.getTopLevelId(deviceId);
+      var result = [];
+      if (!topId) return result;
+
+      result.push(topId);
+
+      var prevId = this.prevTopLevelById[topId];
+      if (prevId) result.push(prevId);
+
+      var children = this.prevChildrenMap[topId] || [];
+      for (var i = 0; i < children.length; i++) {
+        var childId = this.normalizeDeviceId(children[i]);
+        if (childId) result.push(childId);
+      }
+
+      return result;
+    },
+
+    refreshEdgesAroundDevice(deviceId) {
+      var topId = this.getTopLevelId(deviceId);
+      if (!topId || !this.deviceMap[topId]) return false;
+
+      this.removeEdgesForDevice(topId);
+
+      var currentDevice = this.deviceMap[topId];
+      var prevId = this.prevTopLevelById[topId];
+      if (prevId && this.deviceMap[prevId]) {
+        this.drawEdgeBetween(this.deviceMap[prevId], currentDevice);
+      }
+
+      var children = this.prevChildrenMap[topId] || [];
+      for (var i = 0; i < children.length; i++) {
+        var childId = this.normalizeDeviceId(children[i]);
+        if (childId && this.deviceMap[childId]) {
+          this.drawEdgeBetween(currentDevice, this.deviceMap[childId]);
+        }
+      }
+
+      return true;
+    },
+
+    rebindDeviceMarkerClick(deviceId) {
+      var id = this.normalizeDeviceId(deviceId);
+      var marker = this.deviceMarkers[id];
+      if (!id || !marker) return;
+
+      var self = this;
+      marker.off('click');
+      marker.on('click', function(e) {
+        if (e.originalEvent) {
+          L.DomEvent.stopPropagation(e.originalEvent);
+        }
+
+        var device = self.deviceMap[id] || {};
+        var latlng = device.latlng || [];
+        self.$ownerInstance.callMethod('receiveRenderData', {
+          type: 'deviceClick',
+          device: {
+            id: id,
+            name: device.name || '未知设备',
+            lat: Number(latlng[0]),
+            lng: Number(latlng[1]),
+            device_type: device.device_type || ''
+          }
+        });
+      });
+    },
+
+    applyMovePatch(patch) {
+      var id = this.normalizeDeviceId(patch.id);
+      var lat = Number(patch.lat);
+      var lng = Number(patch.lng);
+      if (!id || isNaN(lat) || isNaN(lng)) {
+        console.warn('移动 patch 参数无效:', patch);
+        return;
+      }
+
+      var marker = this.deviceMarkers[id];
+      var device = this.deviceMap[id];
+      if (!marker || !device) {
+        console.warn('移动 patch 找不到设备图层:', patch);
+        return;
+      }
+
+      var latlng = [lat, lng];
+      device.latlng = latlng;
+      marker.setLatLng(latlng);
+      this.rebindDeviceMarkerClick(id);
+      this.refreshEdgesAroundDevice(id);
+      this.setDeviceVisible(id, !this.hiddenDeviceId || String(this.hiddenDeviceId) !== id);
+
+      if (this.selectedDeviceId && String(this.selectedDeviceId) === id) {
+        this.applyMarkerSelectionStyle(id);
+      }
     },
 
     addDeviceContextToVisible(visible, deviceId) {
@@ -1918,7 +2226,6 @@ export default {
     },
 
     onConfirmMoveChange(newValue) {
-      console.log("onConfirmMoveChange", newValue);
       if (!newValue || !this.map) return;
 
       var center = this.map.getCenter();
@@ -1932,9 +2239,17 @@ export default {
     /** 监听移动设备ID变化，隐藏/显示对应marker和连线 */
     onMovingDeviceIdChange(newValue) {
       if (!this.map) return;
-      this.hiddenDeviceId = newValue ? String(newValue) : null;
-      this.refreshMarkerVisibility();
-      this.applySelectedMarkerZIndex();
+      var previousHiddenId = this.hiddenDeviceId ? String(this.hiddenDeviceId) : '';
+      var nextHiddenId = newValue ? String(newValue) : '';
+
+      if (previousHiddenId && previousHiddenId !== nextHiddenId) {
+        this.setDeviceVisible(previousHiddenId, true);
+      }
+
+      this.hiddenDeviceId = nextHiddenId || null;
+      if (nextHiddenId) {
+        this.setDeviceVisible(nextHiddenId, false);
+      }
     },
 
     /** 设置指定设备的 marker 和关联连线的可见性 */

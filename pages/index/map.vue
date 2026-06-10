@@ -11,6 +11,7 @@
 
     <!-- 地图容器 -->
     <view id="map" class="map-container" :prop="mapConfig" :change:prop="mapModule.updateMapConfig"
+      :devicePerfTraceProp="devicePerfTraceProp" :change:devicePerfTraceProp="mapModule.onDevicePerfTraceChange"
       :devicesProp="devicesProp" :change:devicesProp="mapModule.onDevicesChange" :debugMarker="debugMarkerProp"
       :change:debugMarker="mapModule.onDebugMarkerChange" :showNamesProp="showDeviceNames"
       :change:showNamesProp="mapModule.onShowNamesChange" :movingDeviceIdProp="movingDeviceIdProp"
@@ -194,8 +195,156 @@ import { onLoad, onShow, onHide } from '@dcloudio/uni-app';
 import deviceDAO from '@/dao/deviceDAO.js';
 import { getLocation } from '@/utils/get-location.js'
 import { getPinSvgUri } from '@/static/device_svgs.js';
-// DEBUG START
 import { DEBUG_ENABLED, debugLocation, setDebugLocation, clearDebugLocation } from '@/utils/debug-location.js'
+
+const MAP_PERF_ENABLED = true;
+const MAP_PERF_PREFIX = '[MAP_PERF]';
+let mapPerfSeq = 0;
+let pendingDevicesDirtyReason = 'initial';
+
+const perfNow = () => {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+};
+
+const roundPerfMs = (value: number) => Math.round(value * 100) / 100;
+
+const nextMapPerfTraceId = (op: string) => {
+  mapPerfSeq += 1;
+  return `${op}-${Date.now().toString(36)}-${mapPerfSeq}`;
+};
+
+const mapPerfLog = (event: string, detail: Record<string, any> = {}) => {
+  if (!MAP_PERF_ENABLED) return;
+
+  const payload = {
+    event,
+    layer: 'logic',
+    page: 'pages/index/map.vue',
+    at: new Date().toISOString(),
+    ...detail
+  };
+
+  try {
+    console.log(MAP_PERF_PREFIX, JSON.stringify(payload));
+  } catch (err) {
+    console.log(MAP_PERF_PREFIX, payload);
+  }
+};
+
+const getDevicePerfStats = (devices: any[] = []) => {
+  const stats = {
+    totalDevices: devices.length,
+    validCoordDevices: 0,
+    invalidCoordDevices: 0,
+    topLevelDevices: 0,
+    childDevices: 0,
+    linkedDevices: 0
+  };
+
+  devices.forEach((device: any) => {
+    const lat = Number(device?.latitude);
+    const lng = Number(device?.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)) {
+      stats.validCoordDevices++;
+    } else {
+      stats.invalidCoordDevices++;
+    }
+
+    if (device?.parent_id) {
+      stats.childDevices++;
+    } else {
+      stats.topLevelDevices++;
+    }
+
+    if (device?.prev_id) {
+      stats.linkedDevices++;
+    }
+  });
+
+  return stats;
+};
+
+const buildDeviceIdSet = (devices: any[] = []) => {
+  const ids = new Set<string>();
+  devices.forEach((device: any) => {
+    if (device && device.id !== undefined && device.id !== null) {
+      ids.add(String(device.id));
+    }
+  });
+  return ids;
+};
+
+const normalizeDeviceSignatureValue = (value: any) => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch (e) {
+      return String(value);
+    }
+  }
+  return String(value);
+};
+
+const getMapDeviceSignature = (device: any) => {
+  if (!device) return '';
+  return JSON.stringify({
+    line_id: normalizeDeviceSignatureValue(device.line_id),
+    device_type: normalizeDeviceSignatureValue(device.device_type),
+    parent_id: normalizeDeviceSignatureValue(device.parent_id),
+    prev_id: normalizeDeviceSignatureValue(device.prev_id),
+    name: normalizeDeviceSignatureValue(device.name),
+    longitude: normalizeDeviceSignatureValue(device.longitude),
+    latitude: normalizeDeviceSignatureValue(device.latitude),
+    sort_order: normalizeDeviceSignatureValue(device.sort_order),
+    attributes: normalizeDeviceSignatureValue(device.attributes)
+  });
+};
+
+const diffDeviceLists = (previousDevices: any[] = [], nextDevices: any[] = []) => {
+  const previousIds = buildDeviceIdSet(previousDevices);
+  const nextIds = buildDeviceIdSet(nextDevices);
+  const previousById = new Map<string, any>();
+  const addedDevices: any[] = [];
+  const updatedDevices: any[] = [];
+  const removedIds: string[] = [];
+
+  previousDevices.forEach((device: any) => {
+    if (device && device.id !== undefined && device.id !== null) {
+      previousById.set(String(device.id), device);
+    }
+  });
+
+  nextDevices.forEach((device: any) => {
+    if (device && !previousIds.has(String(device.id))) {
+      addedDevices.push(device);
+      return;
+    }
+
+    const previousDevice = device ? previousById.get(String(device.id)) : null;
+    if (previousDevice && getMapDeviceSignature(previousDevice) !== getMapDeviceSignature(device)) {
+      updatedDevices.push(device);
+    }
+  });
+
+  previousDevices.forEach((device: any) => {
+    const id = device && device.id !== undefined && device.id !== null ? String(device.id) : '';
+    if (id && !nextIds.has(id)) {
+      removedIds.push(id);
+    }
+  });
+
+  return {
+    addedDevices,
+    updatedDevices,
+    removedIds
+  };
+};
+
+// DEBUG START
 const debugPanelOpen = ref(false)
 const debugMarkerProp = ref(null)
 const selectedDeviceIdProp = ref('')
@@ -326,6 +475,7 @@ const currentDeviceInfo = ref({
 
 const confirmMoveProp = ref(0);
 const devicePatchProp = ref<any>(null);
+const devicePerfTraceProp = ref<any>(null);
 // 触发地图上设备名称闪烁
 const blinkDeviceIdProp = ref<{ id: string; ts: number } | null>(null);
 
@@ -340,10 +490,18 @@ const movingDeviceIdProp = ref('');
 const movedDeviceCoordinateOverrides = new Map<string, { lat: number; lng: number }>();
 
 const sendDevicePatch = (patch: any) => {
-  devicePatchProp.value = {
+  const traceId = patch.traceId || nextMapPerfTraceId(`patch-${patch.type || 'device'}`);
+  const patchWithMeta = {
     ...patch,
+    traceId,
     ts: Date.now()
   };
+  devicePatchProp.value = patchWithMeta;
+  mapPerfLog('logic.devicePatch.sent', {
+    traceId,
+    patchType: patchWithMeta.type || '',
+    deviceId: patchWithMeta.id || ''
+  });
 };
 
 const getCurrentReferenceLocation = () => {
@@ -414,9 +572,26 @@ const onConfirmMoveResult = async (centerData: { lat: number; lng: number }) => 
   const deviceId = movingDeviceOriginal.value.id;
   const newLng = centerData.lng;
   const newLat = centerData.lat;
+  const traceId = nextMapPerfTraceId('moveDevice');
+  const opStart = perfNow();
+
+  mapPerfLog('logic.move.start', {
+    traceId,
+    deviceId,
+    fromLat: movingDeviceOriginal.value.lat,
+    fromLng: movingDeviceOriginal.value.lng,
+    toLat: newLat,
+    toLng: newLng
+  });
 
   try {
+    const daoStart = perfNow();
     await deviceDAO.updateCoordinates(deviceId, String(newLng), String(newLat));
+    mapPerfLog('logic.move.dao.finish', {
+      traceId,
+      deviceId,
+      durationMs: roundPerfMs(perfNow() - daoStart)
+    });
 
     uni.showToast({ title: '设备移动成功', icon: 'success' });
 
@@ -424,13 +599,25 @@ const onConfirmMoveResult = async (centerData: { lat: number; lng: number }) => 
     updateMovedDeviceLocalCache(deviceId, newLat, newLng);
     sendDevicePatch({
       type: 'move',
+      traceId,
       id: deviceId,
       lat: newLat,
       lng: newLng
     });
     exitMoveMode();
+    mapPerfLog('logic.move.finish', {
+      traceId,
+      deviceId,
+      durationMs: roundPerfMs(perfNow() - opStart)
+    });
 
   } catch (err) {
+    mapPerfLog('logic.move.error', {
+      traceId,
+      deviceId,
+      durationMs: roundPerfMs(perfNow() - opStart),
+      message: err && (err as any).message ? (err as any).message : String(err)
+    });
     console.error('更新设备坐标失败', err);
     uni.showToast({ title: '保存失败，请重试', icon: 'none' });
   }
@@ -487,7 +674,7 @@ const selectDevice = (device: any) => {
 };
 
 const prevDevice = () => {
-  const devices = devicesProp.value;
+  const devices = devicesCache;
   if (!devices || devices.length === 0) return;
 
   const currentIndex = devices.findIndex(
@@ -503,7 +690,7 @@ const prevDevice = () => {
 };
 
 const nextDevice = () => {
-  const devices = devicesProp.value;
+  const devices = devicesCache;
   if (!devices || devices.length === 0) return;
 
   const currentIndex = devices.findIndex(
@@ -600,7 +787,7 @@ const handleDetails = () => {
     url = `/pages/device/edit?lineId=${lineId.value}&lineName=${encodeURIComponent(lineName.value)}&deviceType=${info.deviceType}&lat=${Number(info.lat).toFixed(8)}&lng=${Number(info.lng).toFixed(8)}&deviceId=${info.id}`;
   }
 
-  markDevicesDirty();
+  markDevicesDirty(`edit:${info.deviceType || 'unknown'}`);
 
   uni.navigateTo({
     url,
@@ -644,6 +831,28 @@ const handleMove = () => {
   mapConfig.actionId++;
 };
 
+const syncDeletedDevicesCache = (deleteResult: any, traceId = '') => {
+  const deletedIds = new Set((deleteResult?.deletedIds || []).map((id: any) => String(id)));
+  const brokenPrevIds = new Set((deleteResult?.brokenPrevIds || []).map((id: any) => String(id)));
+
+  devicesCache = devicesCache
+    .filter((device: any) => !deletedIds.has(String(device.id)))
+    .map((device: any) => {
+      if (!brokenPrevIds.has(String(device.id))) return device;
+      return {
+        ...device,
+        prev_id: ''
+      };
+    });
+
+  mapPerfLog('logic.delete.cacheSync.finish', {
+    traceId,
+    deletedIdCount: deletedIds.size,
+    brokenPrevCount: brokenPrevIds.size,
+    currentTotalDevices: devicesCache.length
+  });
+};
+
 const handleDelete = () => {
   const info = currentDeviceInfo.value;
   if (!info.id) {
@@ -660,11 +869,25 @@ const handleDelete = () => {
     confirmColor: '#666666',
     success: async (res) => {
       if (!res.cancel) return;
+      const traceId = nextMapPerfTraceId('deleteDevice');
+      const opStart = perfNow();
+      mapPerfLog('logic.delete.start', {
+        traceId,
+        deviceId: info.id,
+        deviceName: info.name,
+        beforeTotalDevices: devicesCache.length
+      });
       try {
         uni.showLoading({ title: '删除中...' });
-        await deviceDAO.deleteWithChildrenAndBreak(info.id);
-        uni.hideLoading();
-        uni.showToast({ title: '删除成功', icon: 'success' });
+        const daoStart = perfNow();
+        const deleteResult = await deviceDAO.deleteWithChildrenAndBreak(info.id);
+        mapPerfLog('logic.delete.dao.finish', {
+          traceId,
+          deviceId: info.id,
+          durationMs: roundPerfMs(perfNow() - daoStart),
+          deletedIdCount: deleteResult?.deletedIdCount || 0,
+          brokenPrevCount: deleteResult?.brokenPrevCount || 0
+        });
 
         // 关闭面板 & 清除选中态
         showDevicePanel.value = false;
@@ -673,10 +896,32 @@ const handleDelete = () => {
           id: '', name: '', distance: '', lng: '', lat: '', deviceType: ''
         };
 
-        // 重新加载 → RenderJS 自动重绘
-        await loadDevices();
+        syncDeletedDevicesCache(deleteResult || { deletedIds: [info.id], brokenPrevIds: [] }, traceId);
+        sendDevicePatch({
+          type: 'delete',
+          traceId,
+          id: info.id,
+          deletedIds: deleteResult?.deletedIds || [info.id],
+          brokenPrevIds: deleteResult?.brokenPrevIds || []
+        });
+        markDevicesDirty('delete-patch');
+        uni.hideLoading();
+        uni.showToast({ title: '删除成功', icon: 'success' });
+        mapPerfLog('logic.delete.finish', {
+          traceId,
+          deviceId: info.id,
+          patchSent: true,
+          currentTotalDevices: devicesCache.length,
+          durationMs: roundPerfMs(perfNow() - opStart)
+        });
       } catch (err) {
         uni.hideLoading();
+        mapPerfLog('logic.delete.error', {
+          traceId,
+          deviceId: info.id,
+          durationMs: roundPerfMs(perfNow() - opStart),
+          message: err && (err as any).message ? (err as any).message : String(err)
+        });
         console.error('删除设备失败:', err);
         uni.showToast({ title: '删除失败，请重试', icon: 'none' });
       }
@@ -696,7 +941,7 @@ const movingDeviceColor = computed(() => {
   const device = movingDeviceOriginal.value;
   if (device.deviceType === 'pole') {
     // 检查是否有子设备
-    const hasChildren = devicesProp.value.some(d => d.parent_id === device.id);
+    const hasChildren = devicesCache.some(d => d.parent_id === device.id);
     return hasChildren ? { r: 3, g: 218, b: 107 } : { r: 59, g: 191, b: 251 };
   } else {
     // 其他设备类型默认蓝色
@@ -723,6 +968,7 @@ const mapConfig = reactive<MapConfig>({
 
 // 设备列表，独立 prop 传递给 RenderJS，避免与 mapConfig 变更批处理冲突
 const devicesProp = ref<any[]>([]);
+let devicesCache: any[] = [];
 
 // 返回上一页
 const goBack = () => {
@@ -762,7 +1008,7 @@ const goToDeviceSearch = () => {
 
 const searchDevice = (device: any) => {
   // 1. 在已加载的设备列表中查找含坐标的完整设备记录
-  const devices = devicesProp.value;
+  const devices = devicesCache;
   const found = devices.find((d: any) => String(d.id) === String(device.id));
 
   if (!found) {
@@ -954,7 +1200,7 @@ const handleFabClick = (item: any) => {
   }
 
 
-  markDevicesDirty();
+  markDevicesDirty(`add:${item.deviceType || 'unknown'}`);
 
   uni.navigateTo({
     url,
@@ -965,17 +1211,246 @@ const handleFabClick = (item: any) => {
   });
 };
 
-const loadDevices = async () => {
+const loadDevices = async (reason = 'manual', traceId = '') => {
+  const resolvedTraceId = traceId || nextMapPerfTraceId('loadDevices');
+  const loadStart = perfNow();
+  const beforeStats = getDevicePerfStats(devicesCache || []);
+  mapPerfLog('logic.loadDevices.start', {
+    traceId: resolvedTraceId,
+    reason,
+    lineId: lineId.value,
+    beforeTotalDevices: beforeStats.totalDevices
+  });
+
   try {
+    const daoStart = perfNow();
     const devices = await deviceDAO.findAllByLine(lineId.value);
+    const daoDurationMs = roundPerfMs(perfNow() - daoStart);
+    const nextDevices = devices || [];
+    const nextStats = getDevicePerfStats(nextDevices);
+    mapPerfLog('logic.loadDevices.dao.finish', {
+      traceId: resolvedTraceId,
+      reason,
+      lineId: lineId.value,
+      durationMs: daoDurationMs,
+      ...nextStats
+    });
+
     // 直接赋值给独立 ref，触发 renderjs 的 onDevicesChange
-    devicesProp.value = devices || [];
+    const assignStart = perfNow();
+    const tracePayload = {
+      traceId: resolvedTraceId,
+      reason,
+      op: 'loadDevices',
+      assignedAt: Date.now(),
+      ...nextStats
+    };
+    devicePerfTraceProp.value = tracePayload;
+    try {
+      Object.defineProperty(nextDevices, '__mapPerfTrace', {
+        value: tracePayload,
+        enumerable: false
+      });
+    } catch (err) {
+      (nextDevices as any).__mapPerfTrace = tracePayload;
+    }
+    devicesProp.value = nextDevices;
+    devicesCache = nextDevices;
+    mapPerfLog('logic.loadDevices.assign.finish', {
+      traceId: resolvedTraceId,
+      reason,
+      durationMs: roundPerfMs(perfNow() - assignStart),
+      totalDevices: nextStats.totalDevices
+    });
+
     movedDeviceCoordinateOverrides.clear();
     devicesLoaded.value = true;
     loadedDevicesLineId.value = lineId.value;
     devicesDirty.value = false;
+    mapPerfLog('logic.loadDevices.finish', {
+      traceId: resolvedTraceId,
+      reason,
+      durationMs: roundPerfMs(perfNow() - loadStart),
+      ...nextStats
+    });
+    return true;
   } catch (e) {
+    mapPerfLog('logic.loadDevices.error', {
+      traceId: resolvedTraceId,
+      reason,
+      durationMs: roundPerfMs(perfNow() - loadStart),
+      message: e && (e as any).message ? (e as any).message : String(e)
+    });
     console.error('加载设备列表失败:', e);
+    return false;
+  }
+};
+
+const loadDevicesAsAddPatch = async (reason = 'add', traceId = '') => {
+  const resolvedTraceId = traceId || nextMapPerfTraceId('addPatch');
+  const loadStart = perfNow();
+  const previousDevices = devicesCache || [];
+  const beforeStats = getDevicePerfStats(previousDevices);
+  mapPerfLog('logic.addPatch.start', {
+    traceId: resolvedTraceId,
+    reason,
+    lineId: lineId.value,
+    beforeTotalDevices: beforeStats.totalDevices
+  });
+
+  try {
+    const daoStart = perfNow();
+    const devices = await deviceDAO.findAllByLine(lineId.value);
+    const daoDurationMs = roundPerfMs(perfNow() - daoStart);
+    const nextDevices = devices || [];
+    const nextStats = getDevicePerfStats(nextDevices);
+    const diff = diffDeviceLists(previousDevices, nextDevices);
+
+    mapPerfLog('logic.addPatch.dao.finish', {
+      traceId: resolvedTraceId,
+      reason,
+      lineId: lineId.value,
+      durationMs: daoDurationMs,
+      addedCount: diff.addedDevices.length,
+      removedCount: diff.removedIds.length,
+      ...nextStats
+    });
+
+    if (diff.removedIds.length > 0) {
+      mapPerfLog('logic.addPatch.fallback', {
+        traceId: resolvedTraceId,
+        reason,
+        fallbackReason: 'removed-devices-detected',
+        addedCount: diff.addedDevices.length,
+        removedCount: diff.removedIds.length
+      });
+      return false;
+    }
+
+    devicesCache = nextDevices;
+    movedDeviceCoordinateOverrides.clear();
+    devicesLoaded.value = true;
+    loadedDevicesLineId.value = lineId.value;
+    devicesDirty.value = false;
+
+    if (diff.addedDevices.length > 0) {
+      sendDevicePatch({
+        type: 'add',
+        traceId: resolvedTraceId,
+        devices: diff.addedDevices
+      });
+    }
+
+    mapPerfLog('logic.addPatch.finish', {
+      traceId: resolvedTraceId,
+      reason,
+      addedCount: diff.addedDevices.length,
+      currentTotalDevices: devicesCache.length,
+      patchSent: diff.addedDevices.length > 0,
+      durationMs: roundPerfMs(perfNow() - loadStart)
+    });
+    return true;
+  } catch (e) {
+    mapPerfLog('logic.addPatch.error', {
+      traceId: resolvedTraceId,
+      reason,
+      durationMs: roundPerfMs(perfNow() - loadStart),
+      message: e && (e as any).message ? (e as any).message : String(e)
+    });
+    console.error('增量加载新增设备失败:', e);
+    return false;
+  }
+};
+
+const loadDevicesAsUpdatePatch = async (reason = 'edit', traceId = '') => {
+  const resolvedTraceId = traceId || nextMapPerfTraceId('updatePatch');
+  const loadStart = perfNow();
+  const previousDevices = devicesCache || [];
+  const beforeStats = getDevicePerfStats(previousDevices);
+  mapPerfLog('logic.updatePatch.start', {
+    traceId: resolvedTraceId,
+    reason,
+    lineId: lineId.value,
+    beforeTotalDevices: beforeStats.totalDevices
+  });
+
+  try {
+    const daoStart = perfNow();
+    const devices = await deviceDAO.findAllByLine(lineId.value);
+    const daoDurationMs = roundPerfMs(perfNow() - daoStart);
+    const nextDevices = devices || [];
+    const nextStats = getDevicePerfStats(nextDevices);
+    const diff = diffDeviceLists(previousDevices, nextDevices);
+
+    mapPerfLog('logic.updatePatch.dao.finish', {
+      traceId: resolvedTraceId,
+      reason,
+      lineId: lineId.value,
+      durationMs: daoDurationMs,
+      addedCount: diff.addedDevices.length,
+      updatedCount: diff.updatedDevices.length,
+      removedCount: diff.removedIds.length,
+      ...nextStats
+    });
+
+    if (diff.removedIds.length > 0) {
+      mapPerfLog('logic.updatePatch.fallback', {
+        traceId: resolvedTraceId,
+        reason,
+        fallbackReason: 'removed-devices-detected',
+        addedCount: diff.addedDevices.length,
+        updatedCount: diff.updatedDevices.length,
+        removedCount: diff.removedIds.length
+      });
+      return false;
+    }
+
+    devicesCache = nextDevices;
+    movedDeviceCoordinateOverrides.clear();
+    devicesLoaded.value = true;
+    loadedDevicesLineId.value = lineId.value;
+    devicesDirty.value = false;
+
+    if (diff.updatedDevices.length > 0 && diff.addedDevices.length > 0) {
+      sendDevicePatch({
+        type: 'diff',
+        traceId: resolvedTraceId,
+        updatedDevices: diff.updatedDevices,
+        addedDevices: diff.addedDevices
+      });
+    } else if (diff.updatedDevices.length > 0) {
+      sendDevicePatch({
+        type: 'update',
+        traceId: resolvedTraceId,
+        devices: diff.updatedDevices
+      });
+    } else if (diff.addedDevices.length > 0) {
+      sendDevicePatch({
+        type: 'add',
+        traceId: resolvedTraceId,
+        devices: diff.addedDevices
+      });
+    }
+
+    mapPerfLog('logic.updatePatch.finish', {
+      traceId: resolvedTraceId,
+      reason,
+      addedCount: diff.addedDevices.length,
+      updatedCount: diff.updatedDevices.length,
+      currentTotalDevices: devicesCache.length,
+      patchSent: diff.updatedDevices.length > 0 || diff.addedDevices.length > 0,
+      durationMs: roundPerfMs(perfNow() - loadStart)
+    });
+    return true;
+  } catch (e) {
+    mapPerfLog('logic.updatePatch.error', {
+      traceId: resolvedTraceId,
+      reason,
+      durationMs: roundPerfMs(perfNow() - loadStart),
+      message: e && (e as any).message ? (e as any).message : String(e)
+    });
+    console.error('增量更新设备失败:', e);
+    return false;
   }
 };
 
@@ -983,8 +1458,21 @@ const devicesLoaded = ref(false);
 const loadedDevicesLineId = ref('');
 const devicesDirty = ref(true);
 
-const markDevicesDirty = () => {
+const getDevicesReloadReason = () => {
+  if (!devicesLoaded.value) return 'initial';
+  if (loadedDevicesLineId.value !== lineId.value) return 'line-changed';
+  if (devicesDirty.value) return pendingDevicesDirtyReason || 'dirty';
+  return 'clean';
+};
+
+const markDevicesDirty = (reason = 'unknown') => {
   devicesDirty.value = true;
+  pendingDevicesDirtyReason = reason;
+  mapPerfLog('logic.devicesDirty.mark', {
+    reason,
+    lineId: lineId.value,
+    currentTotalDevices: devicesCache.length
+  });
 };
 
 const shouldReloadDevices = () => {
@@ -994,8 +1482,35 @@ const shouldReloadDevices = () => {
 };
 
 const loadDevicesIfNeeded = async () => {
-  if (!shouldReloadDevices()) return;
-  await loadDevices();
+  const reason = getDevicesReloadReason();
+  if (!shouldReloadDevices()) {
+    mapPerfLog('logic.loadDevices.skip', {
+      reason,
+      lineId: lineId.value,
+      currentTotalDevices: devicesCache.length
+    });
+    return;
+  }
+
+  const traceId = nextMapPerfTraceId('reloadDevices');
+  let loaded = false;
+  if (reason.indexOf('add:') === 0 && devicesCache.length > 0) {
+    loaded = await loadDevicesAsAddPatch(reason, traceId);
+    if (!loaded) {
+      loaded = await loadDevices(`${reason}:fallback`, traceId);
+    }
+  } else if (reason.indexOf('edit:') === 0 && devicesCache.length > 0) {
+    loaded = await loadDevicesAsUpdatePatch(reason, traceId);
+    if (!loaded) {
+      loaded = await loadDevices(`${reason}:fallback`, traceId);
+    }
+  } else {
+    loaded = await loadDevices(reason, traceId);
+  }
+
+  if (loaded) {
+    pendingDevicesDirtyReason = '';
+  }
 };
 
 onLoad((options) => {
@@ -1038,6 +1553,12 @@ onLoad((options) => {
 // ← 新增：每次页面显示时重新加载设备（包括从编辑页返回时）
 onShow(() => {
   isMapPageVisible.value = true;
+  mapPerfLog('logic.onShow', {
+    lineId: lineId.value,
+    reloadNeeded: shouldReloadDevices(),
+    reason: getDevicesReloadReason(),
+    currentTotalDevices: devicesCache.length
+  });
   loadDevicesIfNeeded();
   if (!isInitialLocating.value && !isMovingDevice.value) {
     startLocationWatch();
@@ -1079,8 +1600,11 @@ export default {
       locationMarker: null,
       deviceLayerGroup: null,   // ← 新增：设备图层组
       pendingDevices: null,     // ← 新增：地图未就绪时暂存设备数据
+      pendingDevicesTrace: null,
       tdtKey: 'a30fe8f02deafbdc08192aa8f81c0044',
       pendingConfig: null,
+      currentDevicesTrace: null,
+      mapPerfEnabled: true,
       showNames: true,
       debugMarker: null, // DEBUG
       deviceMarkers: {}, // deviceId -> L.marker
@@ -1146,7 +1670,71 @@ export default {
     document.head.appendChild(script);
   },
   methods: {
+    mapPerfNow() {
+      if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+        return performance.now();
+      }
+      return Date.now();
+    },
+
+    roundPerfMs(value) {
+      return Math.round(value * 100) / 100;
+    },
+
+    mapPerfLog(event, detail) {
+      if (!this.mapPerfEnabled) return;
+
+      var payload = {
+        event: event,
+        layer: 'render',
+        page: 'pages/index/map.vue',
+        at: new Date().toISOString()
+      };
+      detail = detail || {};
+      for (var key in detail) {
+        payload[key] = detail[key];
+      }
+
+      try {
+        console.log('[MAP_PERF]', JSON.stringify(payload));
+      } catch (err) {
+        console.log('[MAP_PERF]', payload);
+      }
+    },
+
+    getLayerCounts() {
+      var markerCount = 0;
+      var polylineCount = 0;
+      var seenPolylines = {};
+
+      for (var markerId in this.deviceMarkers) {
+        if (this.deviceMarkers[markerId]) markerCount++;
+      }
+
+      for (var lineId in this.devicePolylines) {
+        var lines = this.devicePolylines[lineId] || [];
+        for (var i = 0; i < lines.length; i++) {
+          var layer = lines[i];
+          var key = layer && layer._leaflet_id !== undefined
+            ? String(layer._leaflet_id)
+            : lineId + ':' + i;
+          if (!seenPolylines[key]) {
+            seenPolylines[key] = true;
+            polylineCount++;
+          }
+        }
+      }
+
+      return {
+        markerCount: markerCount,
+        polylineCount: polylineCount,
+        spanLabelCount: this.spanLabelMarkers ? this.spanLabelMarkers.length : 0,
+        topLevelCount: this.topLevelDeviceIds ? this.topLevelDeviceIds.length : 0
+      };
+    },
+
     initMap() {
+      var initStart = this.mapPerfNow();
       if (!window.L || !this.tdtKey) return;
 
       const initialCenter = (this.pendingConfig && this.pendingConfig.center)
@@ -1191,10 +1779,18 @@ export default {
       }
 
       // ← 新增：地图初始化完成后，绘制已暂存的设备数据
+      var hadPendingDevices = !!this.pendingDevices;
       if (this.pendingDevices) {
-        this.drawDevices(this.pendingDevices);
+        this.drawDevices(this.pendingDevices, this.pendingDevicesTrace || this.currentDevicesTrace);
         this.pendingDevices = null;
+        this.pendingDevicesTrace = null;
       }
+
+      this.mapPerfLog('render.initMap.finish', {
+        durationMs: this.roundPerfMs(this.mapPerfNow() - initStart),
+        hadPendingDevices: hadPendingDevices,
+        zoom: this.map && this.map.getZoom ? this.map.getZoom() : null
+      });
     },
 
     applyConfig(config) {
@@ -1263,17 +1859,47 @@ export default {
 
     /** 设备数据变化时触发（独立 prop 通道） */
     onDevicesChange(newValue) {
+      var trace = (newValue && newValue.__mapPerfTrace) || this.currentDevicesTrace || {};
+      this.mapPerfLog('render.onDevicesChange', {
+        traceId: trace.traceId || '',
+        reason: trace.reason || '',
+        deviceCount: newValue ? newValue.length : 0,
+        mapReady: !!this.map
+      });
+
       if (this.map) {
-      this.drawDevices(newValue || []);
+        this.drawDevices(newValue || [], trace);
       } else {
-      this.pendingDevices = newValue;
+        this.pendingDevices = newValue;
+        this.pendingDevicesTrace = trace;
       }
+    },
+
+    onDevicePerfTraceChange(newValue) {
+      this.currentDevicesTrace = newValue || null;
+      if (!newValue) return;
+
+      this.mapPerfLog('render.deviceTrace.received', {
+        traceId: newValue.traceId || '',
+        reason: newValue.reason || '',
+        op: newValue.op || '',
+        totalDevices: newValue.totalDevices || 0,
+        validCoordDevices: newValue.validCoordDevices || 0
+      });
     },
 
     onDevicePatchChange(newValue) {
       if (!newValue || !this.map) return;
       if (newValue.type === 'move') {
         this.applyMovePatch(newValue);
+      } else if (newValue.type === 'delete') {
+        this.applyDeletePatch(newValue);
+      } else if (newValue.type === 'add') {
+        this.applyAddPatch(newValue);
+      } else if (newValue.type === 'update') {
+        this.applyUpdatePatch(newValue);
+      } else if (newValue.type === 'diff') {
+        this.applyDiffPatch(newValue);
       }
     },
 
@@ -1357,7 +1983,14 @@ export default {
     * 绘制设备标记和连线
     * Marker 样式：倒水滴状定位针 + 内嵌居中 SVG 图标 + 右侧名称标签
     */
-    drawDevices(devices) {
+    drawDevices(devices, trace) {
+      trace = trace || {};
+      var traceId = trace.traceId || '';
+      var reason = trace.reason || '';
+      var drawStart = this.mapPerfNow();
+      var clearStart = drawStart;
+      var oldLayerRemoved = !!this.deviceLayerGroup;
+
       // 清除旧图层
       if (this.deviceLayerGroup) {
         this.map.removeLayer(this.deviceLayerGroup);
@@ -1373,30 +2006,57 @@ export default {
       this.prevChildrenMap = {};
       this.prevTopLevelById = {};
       this.visibleSampledDeviceIds = {};
+      var clearEnd = this.mapPerfNow();
 
-      if (!devices || devices.length === 0) return;
-    
+      if (!devices || devices.length === 0) {
+        this.mapPerfLog('render.drawDevices.finish', {
+          traceId: traceId,
+          reason: reason,
+          durationMs: this.roundPerfMs(this.mapPerfNow() - drawStart),
+          clearMs: this.roundPerfMs(clearEnd - clearStart),
+          totalDevices: 0,
+          markerCount: 0,
+          polylineCount: 0,
+          spanLabelCount: 0,
+          oldLayerRemoved: oldLayerRemoved
+        });
+        return;
+      }
+
       this.deviceLayerGroup = L.layerGroup().addTo(this.map);
       var self = this; // 保存 this 引用
-      
+
       // 构建设备ID到设备对象的映射，用于快速查找
       var deviceMap = {};
       var topLevelDevices = [];
+      var validCoordCount = 0;
+      var invalidCoordCount = 0;
+      var childDeviceCount = 0;
+      var markerBuildStart = 0;
+      var markerBuildEnd = 0;
+      var edgeBuildStart = 0;
+      var edgeBuildEnd = 0;
+      var drawnPolylineCount = 0;
+      var drawnSpanLabelCount = 0;
       // 收集每个设备的子设备信息
       var childDevices = {};
-      
+      var childIndexStart = this.mapPerfNow();
+
       // 第一遍遍历：收集子设备信息
       for (var i = 0; i < devices.length; i++) {
         var device = devices[i];
         if (device.parent_id && device.parent_id !== '') {
+          childDeviceCount++;
           if (!childDevices[device.parent_id]) {
             childDevices[device.parent_id] = [];
           }
           childDevices[device.parent_id].push(device.id);
         }
       }
-    
-      for (var i = 0; i < devices.length; i++) { 
+      var childIndexEnd = this.mapPerfNow();
+
+      markerBuildStart = this.mapPerfNow();
+      for (var i = 0; i < devices.length; i++) {
         var device=devices[i];
         // 先注册（无坐标的子设备也需要被记录，用于 getTopLevelDevice 追溯）
         deviceMap[device.id] = {
@@ -1406,9 +2066,13 @@ export default {
           parent_id: device.parent_id
         };
         var lat=parseFloat(device.latitude);
-        var lng=parseFloat(device.longitude); 
-        
-        if (isNaN(lat) || isNaN(lng) || (lat===0 && lng===0)) continue;
+        var lng=parseFloat(device.longitude);
+
+        if (isNaN(lat) || isNaN(lng) || (lat===0 && lng===0)) {
+          invalidCoordCount++;
+          continue;
+        }
+        validCoordCount++;
         var latlng = [lat, lng];
         deviceMap[device.id].latlng = latlng; // 补充有效坐标
         var displayName=device.name || '未命名' ;
@@ -1519,6 +2183,7 @@ export default {
           topLevelDevices.push(deviceMap[device.id]);
         }
       }
+      markerBuildEnd = this.mapPerfNow();
 
       // 辅助函数：向上追溯 parent_id，返回顶层设备对象
       function getTopLevelDevice(deviceId) {
@@ -1537,6 +2202,7 @@ export default {
       var prevChildrenMap = {};
       var prevTopLevelById = {};
 
+      edgeBuildStart = this.mapPerfNow();
       for (var j = 0; j < topLevelDevices.length; j++) {
         var currentDevice=topLevelDevices[j];
         if (currentDevice.prev_id && currentDevice.prev_id !=='' ) { 
@@ -1573,6 +2239,7 @@ export default {
 
           var polyline = L.polyline([prevDevice.latlng, currentDevice.latlng], polylineOptions)
             .addTo(this.deviceLayerGroup);
+          drawnPolylineCount++;
 
           if (!this.devicePolylines[currentDevice.id]) this.devicePolylines[currentDevice.id] = [];
           this.devicePolylines[currentDevice.id].push(polyline);
@@ -1603,6 +2270,7 @@ export default {
             var spanMarker = L.marker([midLat, midLng], { icon: spanIcon, interactive: false })
             .addTo(this.deviceLayerGroup);
             this.spanLabelMarkers.push(spanMarker);
+            drawnSpanLabelCount++;
             
             // 存储标签引用，关联到两端设备，方便移动时隐藏
             if (!this.deviceSpanLabels[currentDevice.id]) this.deviceSpanLabels[currentDevice.id] = [];
@@ -1612,19 +2280,58 @@ export default {
           }
         }
       }
+      edgeBuildEnd = this.mapPerfNow();
       // 重绘后恢复选中态对应的层级
       this.deviceMap = deviceMap;
       this.topLevelDeviceIds = topLevelDevices.map(function(item) { return String(item.id); });
       this.prevChildrenMap = prevChildrenMap;
       this.prevTopLevelById = prevTopLevelById;
 
+      var scaleStart = this.mapPerfNow();
       this.refreshMarkerScale(true);
+      var visibilityStart = this.mapPerfNow();
       this.refreshMarkerVisibility();
+      var selectionStart = this.mapPerfNow();
       this.applySelectedMarkerZIndex(true);
+      var drawEnd = this.mapPerfNow();
+      var layerCounts = this.getLayerCounts();
+      this.mapPerfLog('render.drawDevices.finish', {
+        traceId: traceId,
+        reason: reason,
+        durationMs: this.roundPerfMs(drawEnd - drawStart),
+        clearMs: this.roundPerfMs(clearEnd - clearStart),
+        childIndexMs: this.roundPerfMs(childIndexEnd - childIndexStart),
+        markerBuildMs: this.roundPerfMs(markerBuildEnd - markerBuildStart),
+        edgeBuildMs: this.roundPerfMs(edgeBuildEnd - edgeBuildStart),
+        refreshScaleMs: this.roundPerfMs(visibilityStart - scaleStart),
+        refreshVisibilityMs: this.roundPerfMs(selectionStart - visibilityStart),
+        selectionMs: this.roundPerfMs(drawEnd - selectionStart),
+        totalDevices: devices.length,
+        validCoordDevices: validCoordCount,
+        invalidCoordDevices: invalidCoordCount,
+        childDevices: childDeviceCount,
+        topLevelDevices: topLevelDevices.length,
+        markerCount: layerCounts.markerCount,
+        polylineCount: layerCounts.polylineCount,
+        spanLabelCount: layerCounts.spanLabelCount,
+        drawnPolylineCount: drawnPolylineCount,
+        drawnSpanLabelCount: drawnSpanLabelCount,
+        zoom: this.map && this.map.getZoom ? this.map.getZoom() : null,
+        samplingActive: this.isMarkerSamplingActive(),
+        endpointOnly: this.isEndpointOnlyMode(),
+        oldLayerRemoved: oldLayerRemoved
+      });
       setTimeout(function() {
+        var deferredStart = self.mapPerfNow();
         self.refreshMarkerScale(true);
         self.refreshMarkerVisibility();
         self.applySelectedMarkerZIndex(true);
+        self.mapPerfLog('render.drawDevices.deferredRefresh.finish', {
+          traceId: traceId,
+          reason: reason,
+          durationMs: self.roundPerfMs(self.mapPerfNow() - deferredStart),
+          delayMs: 100
+        });
       }, 100);
     },
 
@@ -1712,6 +2419,209 @@ export default {
         currentId = parentId;
       }
       return currentId;
+    },
+
+    normalizeDeviceIdList(values) {
+      var result = [];
+      if (!values) return result;
+
+      var list = Array.isArray(values) ? values : [values];
+      for (var i = 0; i < list.length; i++) {
+        var id = this.normalizeDeviceId(list[i]);
+        if (id && result.indexOf(id) === -1) result.push(id);
+      }
+      return result;
+    },
+
+    addUniqueId(list, deviceId) {
+      var id = this.normalizeDeviceId(deviceId);
+      if (id && list.indexOf(id) === -1) list.push(id);
+    },
+
+    addAffectedEdgeContext(list, deviceId) {
+      var topId = this.getTopLevelId(deviceId);
+      if (!topId) return;
+
+      this.addUniqueId(list, topId);
+      this.addUniqueId(list, this.prevTopLevelById[topId]);
+
+      var children = this.prevChildrenMap[topId] || [];
+      for (var i = 0; i < children.length; i++) {
+        this.addUniqueId(list, children[i]);
+      }
+    },
+
+    rebuildConnectionMaps() {
+      var topLevelDeviceIds = [];
+      var seenTopLevelIds = {};
+      var prevChildrenMap = {};
+      var prevTopLevelById = {};
+
+      var addTopLevel = function(id) {
+        var normalizedId = String(id);
+        if (seenTopLevelIds[normalizedId]) return;
+        seenTopLevelIds[normalizedId] = true;
+        topLevelDeviceIds.push(normalizedId);
+      };
+
+      for (var oldIndex = 0; oldIndex < this.topLevelDeviceIds.length; oldIndex++) {
+        var oldTopId = this.normalizeDeviceId(this.topLevelDeviceIds[oldIndex]);
+        var oldTopDevice = this.deviceMap[oldTopId];
+        if (oldTopDevice && oldTopDevice.latlng && (!oldTopDevice.parent_id || oldTopDevice.parent_id === '')) {
+          addTopLevel(oldTopId);
+        }
+      }
+
+      for (var id in this.deviceMap) {
+        var device = this.deviceMap[id];
+        if (device && device.latlng && (!device.parent_id || device.parent_id === '')) {
+          addTopLevel(id);
+        }
+      }
+
+      for (var i = 0; i < topLevelDeviceIds.length; i++) {
+        var currentId = topLevelDeviceIds[i];
+        var currentDevice = this.deviceMap[currentId];
+        if (!currentDevice || !currentDevice.prev_id) continue;
+
+        var prevId = this.getTopLevelId(currentDevice.prev_id);
+        var prevDevice = prevId ? this.deviceMap[prevId] : null;
+        if (!prevDevice || !prevDevice.latlng) continue;
+
+        if (!prevChildrenMap[prevDevice.id]) prevChildrenMap[prevDevice.id] = [];
+        prevChildrenMap[prevDevice.id].push(currentDevice.id);
+        prevTopLevelById[currentDevice.id] = prevDevice.id;
+      }
+
+      this.topLevelDeviceIds = topLevelDeviceIds;
+      this.prevChildrenMap = prevChildrenMap;
+      this.prevTopLevelById = prevTopLevelById;
+    },
+
+    parseDeviceAttributes(rawAttributes) {
+      if (!rawAttributes) return {};
+      if (typeof rawAttributes === 'string') {
+        try {
+          return JSON.parse(rawAttributes);
+        } catch (e) {
+          return {};
+        }
+      }
+      if (typeof rawAttributes === 'object') return rawAttributes;
+      return {};
+    },
+
+    hasChildDevice(deviceId) {
+      var id = this.normalizeDeviceId(deviceId);
+      if (!id) return false;
+
+      for (var childId in this.deviceMap) {
+        var child = this.deviceMap[childId];
+        if (child && this.normalizeDeviceId(child.parent_id) === id) {
+          return true;
+        }
+      }
+      return false;
+    },
+
+    getDeviceMarkerColor(deviceId) {
+      var id = this.normalizeDeviceId(deviceId);
+      var device = id ? this.deviceMap[id] : null;
+      if (device && device.device_type === 'pole' && this.hasChildDevice(id)) {
+        return '#03da6b';
+      }
+      return '#3bbffb';
+    },
+
+    setDeviceMarkerColor(deviceId) {
+      var id = this.normalizeDeviceId(deviceId);
+      var marker = id ? this.deviceMarkers[id] : null;
+      if (!marker || !marker.getElement) return;
+
+      var el = marker.getElement();
+      if (!el) return;
+
+      var bg = el.querySelector('.device-pin-bg');
+      if (bg) bg.style.background = this.getDeviceMarkerColor(id);
+    },
+
+    registerDeviceRecord(device) {
+      if (!device || device.id === undefined || device.id === null) return null;
+
+      var id = this.normalizeDeviceId(device.id);
+      var lat = parseFloat(device.latitude);
+      var lng = parseFloat(device.longitude);
+      var hasValidCoord = !isNaN(lat) && !isNaN(lng) && !(lat === 0 && lng === 0);
+      var parsedAttrs = this.parseDeviceAttributes(device.attributes);
+
+      this.deviceMap[id] = {
+        id: id,
+        latlng: hasValidCoord ? [lat, lng] : null,
+        prev_id: device.prev_id,
+        parent_id: device.parent_id,
+        attributes: parsedAttrs,
+        device_type: device.device_type,
+        name: device.name || '未命名'
+      };
+
+      return this.deviceMap[id];
+    },
+
+    createDeviceMarker(deviceId) {
+      var id = this.normalizeDeviceId(deviceId);
+      var device = id ? this.deviceMap[id] : null;
+      if (!device || !device.latlng || this.deviceMarkers[id]) return false;
+
+      var self = this;
+      var displayName = device.name || '未命名';
+      var svgHtml = this.getDeviceSvg(device.device_type);
+      var color = this.getDeviceMarkerColor(id);
+      var html = ''
+        + '<div class="device-marker-content" style="display:flex;align-items:flex-start;pointer-events:auto;transform:scale(1);">'
+        +  '<div style="'
+        +   'position:relative;'
+        +   'width:28px;height:28px;'
+        +   'display:flex;align-items:center;justify-content:center;'
+        +   'flex-shrink:0;'
+        +  '">'
+        +   '<div class="device-pin-bg" style="'
+        +    'position:absolute;top:0;left:0;width:100%;height:100%;'
+        +    'background:' + color + ';'
+        +    'border-radius:50% 50% 50% 0;'
+        +    'transform:rotate(-45deg);'
+        +    'box-shadow:-2px 2px 4px rgba(0,0,0,0.3);'
+        +   '"></div>'
+        +   '<div style="'
+        +    'position:relative;z-index:1;'
+        +    'width:16px;height:16px;'
+        +    'display:flex;align-items:center;justify-content:center;'
+        +   '">'
+        +    svgHtml
+        +   '</div>'
+        +  '</div>'
+        + '<span class="device-name-label" style="'
+        +  'display:' + ((self.showNames && !self.isMoveLightMode()) ? 'inline' : 'none') + ';'
+        +  'margin-left:6px;margin-top:4px;'
+        +  'white-space:nowrap;'
+        +  'color:#fff;font-size:12px;font-weight:bold;'
+        +  'text-shadow:'
+        +   '-1px -1px 0 #333,'
+        +   ' 1px -1px 0 #333,'
+        +   '-1px  1px 0 #333,'
+        +   ' 1px  1px 0 #333;'
+        +  '">' + displayName + '</span>'
+        + '</div>';
+      var icon = L.divIcon({
+        className: 'device-marker-wrapper',
+        html: html,
+        iconSize: [28, 34],
+        iconAnchor: [14, 34]
+      });
+
+      var marker = L.marker(device.latlng, { icon: icon }).addTo(this.deviceLayerGroup);
+      this.deviceMarkers[id] = marker;
+      this.rebindDeviceMarkerClick(id);
+      return true;
     },
 
     addUniqueLayer(list, layer) {
@@ -1940,11 +2850,386 @@ export default {
       });
     },
 
+    applyAddPatch(patch) {
+      var patchStart = this.mapPerfNow();
+      var traceId = patch && patch.traceId ? patch.traceId : '';
+      var devices = patch && Array.isArray(patch.devices) ? patch.devices : [];
+
+      if (devices.length === 0) {
+        this.mapPerfLog('render.applyAddPatch.finish', {
+          traceId: traceId,
+          durationMs: this.roundPerfMs(this.mapPerfNow() - patchStart),
+          addedCount: 0,
+          markerAddedCount: 0
+        });
+        return;
+      }
+
+      if (!this.deviceLayerGroup) {
+        this.deviceLayerGroup = L.layerGroup().addTo(this.map);
+      }
+
+      var beforeCounts = this.getLayerCounts();
+      var registerStart = this.mapPerfNow();
+      var addedIds = [];
+      var parentIdsToRecolor = [];
+      var duplicateCount = 0;
+      var invalidCoordCount = 0;
+
+      for (var i = 0; i < devices.length; i++) {
+        var rawDevice = devices[i];
+        var id = rawDevice ? this.normalizeDeviceId(rawDevice.id) : '';
+        if (!id) continue;
+        if (this.deviceMap[id]) duplicateCount++;
+
+        var registered = this.registerDeviceRecord(rawDevice);
+        if (!registered) continue;
+
+        this.addUniqueId(addedIds, id);
+        if (!registered.latlng) invalidCoordCount++;
+        if (registered.parent_id) {
+          this.addUniqueId(parentIdsToRecolor, registered.parent_id);
+        }
+      }
+      var registerEnd = this.mapPerfNow();
+
+      var markerStart = this.mapPerfNow();
+      var markerAddedCount = 0;
+      for (var m = 0; m < addedIds.length; m++) {
+        if (this.createDeviceMarker(addedIds[m])) markerAddedCount++;
+      }
+      for (var p = 0; p < parentIdsToRecolor.length; p++) {
+        this.setDeviceMarkerColor(parentIdsToRecolor[p]);
+      }
+      var markerEnd = this.mapPerfNow();
+
+      var rebuildStart = this.mapPerfNow();
+      this.rebuildConnectionMaps();
+      var rebuildEnd = this.mapPerfNow();
+
+      var affectedIds = [];
+      for (var a = 0; a < addedIds.length; a++) {
+        this.addAffectedEdgeContext(affectedIds, addedIds[a]);
+      }
+      for (var parentIndex = 0; parentIndex < parentIdsToRecolor.length; parentIndex++) {
+        this.addAffectedEdgeContext(affectedIds, parentIdsToRecolor[parentIndex]);
+      }
+
+      var edgeStart = this.mapPerfNow();
+      var refreshedEdgeCount = 0;
+      for (var r = 0; r < affectedIds.length; r++) {
+        var affectedId = affectedIds[r];
+        if (!this.deviceMap[affectedId]) continue;
+        if (this.refreshEdgesAroundDevice(affectedId)) refreshedEdgeCount++;
+      }
+      var edgeEnd = this.mapPerfNow();
+
+      var refreshStart = this.mapPerfNow();
+      this.refreshMarkerScale(true);
+      this.refreshMarkerVisibility();
+      this.applySelectedMarkerZIndex(true);
+      var patchEnd = this.mapPerfNow();
+      var afterCounts = this.getLayerCounts();
+
+      this.mapPerfLog('render.applyAddPatch.finish', {
+        traceId: traceId,
+        durationMs: this.roundPerfMs(patchEnd - patchStart),
+        registerMs: this.roundPerfMs(registerEnd - registerStart),
+        markerBuildMs: this.roundPerfMs(markerEnd - markerStart),
+        rebuildMapsMs: this.roundPerfMs(rebuildEnd - rebuildStart),
+        refreshEdgesMs: this.roundPerfMs(edgeEnd - edgeStart),
+        refreshVisibilityMs: this.roundPerfMs(patchEnd - refreshStart),
+        addedCount: addedIds.length,
+        duplicateCount: duplicateCount,
+        invalidCoordCount: invalidCoordCount,
+        markerAddedCount: markerAddedCount,
+        parentRecolorCount: parentIdsToRecolor.length,
+        affectedEdgeContextCount: affectedIds.length,
+        refreshedEdgeCount: refreshedEdgeCount,
+        beforeMarkerCount: beforeCounts.markerCount,
+        afterMarkerCount: afterCounts.markerCount,
+        beforePolylineCount: beforeCounts.polylineCount,
+        afterPolylineCount: afterCounts.polylineCount,
+        beforeSpanLabelCount: beforeCounts.spanLabelCount,
+        afterSpanLabelCount: afterCounts.spanLabelCount
+      });
+    },
+
+    applyDiffPatch(patch) {
+      var patchStart = this.mapPerfNow();
+      var traceId = patch && patch.traceId ? patch.traceId : '';
+      var updatedDevices = patch && Array.isArray(patch.updatedDevices) ? patch.updatedDevices : [];
+      var addedDevices = patch && Array.isArray(patch.addedDevices) ? patch.addedDevices : [];
+
+      if (updatedDevices.length > 0) {
+        this.applyUpdatePatch({
+          type: 'update',
+          traceId: traceId,
+          devices: updatedDevices
+        });
+      }
+
+      if (addedDevices.length > 0) {
+        this.applyAddPatch({
+          type: 'add',
+          traceId: traceId,
+          devices: addedDevices
+        });
+      }
+
+      this.mapPerfLog('render.applyDiffPatch.finish', {
+        traceId: traceId,
+        durationMs: this.roundPerfMs(this.mapPerfNow() - patchStart),
+        updatedCount: updatedDevices.length,
+        addedCount: addedDevices.length
+      });
+    },
+
+    applyUpdatePatch(patch) {
+      var patchStart = this.mapPerfNow();
+      var traceId = patch && patch.traceId ? patch.traceId : '';
+      var devices = patch && Array.isArray(patch.devices) ? patch.devices : [];
+
+      if (devices.length === 0) {
+        this.mapPerfLog('render.applyUpdatePatch.finish', {
+          traceId: traceId,
+          durationMs: this.roundPerfMs(this.mapPerfNow() - patchStart),
+          updatedCount: 0,
+          markerRebuiltCount: 0
+        });
+        return;
+      }
+
+      if (!this.deviceLayerGroup) {
+        this.deviceLayerGroup = L.layerGroup().addTo(this.map);
+      }
+
+      var beforeCounts = this.getLayerCounts();
+      var oldAffectedIds = [];
+      var updatedIds = [];
+      var parentIdsToRecolor = [];
+      var invalidCoordCount = 0;
+
+      for (var i = 0; i < devices.length; i++) {
+        var rawDevice = devices[i];
+        var id = rawDevice ? this.normalizeDeviceId(rawDevice.id) : '';
+        if (!id) continue;
+
+        var existingDevice = this.deviceMap[id];
+        this.addAffectedEdgeContext(oldAffectedIds, id);
+        if (existingDevice) {
+          this.addUniqueId(parentIdsToRecolor, existingDevice.parent_id);
+        }
+        this.addUniqueId(parentIdsToRecolor, rawDevice.parent_id);
+        this.addUniqueId(updatedIds, id);
+      }
+
+      var removeEdgesStart = this.mapPerfNow();
+      for (var oldIndex = 0; oldIndex < oldAffectedIds.length; oldIndex++) {
+        this.removeEdgesForDevice(oldAffectedIds[oldIndex]);
+      }
+      var removeEdgesEnd = this.mapPerfNow();
+
+      var registerStart = this.mapPerfNow();
+      var markerRebuiltCount = 0;
+      var missingBeforeCount = 0;
+      for (var d = 0; d < devices.length; d++) {
+        var device = devices[d];
+        var deviceId = device ? this.normalizeDeviceId(device.id) : '';
+        if (!deviceId) continue;
+
+        if (this.deviceMarkers[deviceId]) {
+          this.removeMapLayer(this.deviceMarkers[deviceId]);
+          delete this.deviceMarkers[deviceId];
+        } else {
+          missingBeforeCount++;
+        }
+
+        var registered = this.registerDeviceRecord(device);
+        if (registered && !registered.latlng) invalidCoordCount++;
+        if (registered && this.createDeviceMarker(deviceId)) {
+          markerRebuiltCount++;
+        }
+      }
+      var registerEnd = this.mapPerfNow();
+
+      var rebuildStart = this.mapPerfNow();
+      this.rebuildConnectionMaps();
+      var rebuildEnd = this.mapPerfNow();
+
+      for (var parentIndex = 0; parentIndex < parentIdsToRecolor.length; parentIndex++) {
+        this.setDeviceMarkerColor(parentIdsToRecolor[parentIndex]);
+      }
+
+      var affectedIds = oldAffectedIds.slice();
+      for (var a = 0; a < updatedIds.length; a++) {
+        this.addAffectedEdgeContext(affectedIds, updatedIds[a]);
+      }
+      for (var p = 0; p < parentIdsToRecolor.length; p++) {
+        this.addAffectedEdgeContext(affectedIds, parentIdsToRecolor[p]);
+      }
+
+      var redrawStart = this.mapPerfNow();
+      var refreshedEdgeCount = 0;
+      for (var r = 0; r < affectedIds.length; r++) {
+        var affectedId = affectedIds[r];
+        if (!this.deviceMap[affectedId]) continue;
+        if (this.refreshEdgesAroundDevice(affectedId)) refreshedEdgeCount++;
+      }
+      var redrawEnd = this.mapPerfNow();
+
+      var refreshStart = this.mapPerfNow();
+      this.refreshMarkerScale(true);
+      this.refreshMarkerVisibility();
+      this.applySelectedMarkerZIndex(true);
+      var patchEnd = this.mapPerfNow();
+      var afterCounts = this.getLayerCounts();
+
+      this.mapPerfLog('render.applyUpdatePatch.finish', {
+        traceId: traceId,
+        durationMs: this.roundPerfMs(patchEnd - patchStart),
+        removeEdgesMs: this.roundPerfMs(removeEdgesEnd - removeEdgesStart),
+        markerRebuildMs: this.roundPerfMs(registerEnd - registerStart),
+        rebuildMapsMs: this.roundPerfMs(rebuildEnd - rebuildStart),
+        refreshEdgesMs: this.roundPerfMs(redrawEnd - redrawStart),
+        refreshVisibilityMs: this.roundPerfMs(patchEnd - refreshStart),
+        updatedCount: updatedIds.length,
+        invalidCoordCount: invalidCoordCount,
+        markerRebuiltCount: markerRebuiltCount,
+        missingBeforeCount: missingBeforeCount,
+        parentRecolorCount: parentIdsToRecolor.length,
+        affectedEdgeContextCount: affectedIds.length,
+        refreshedEdgeCount: refreshedEdgeCount,
+        beforeMarkerCount: beforeCounts.markerCount,
+        afterMarkerCount: afterCounts.markerCount,
+        beforePolylineCount: beforeCounts.polylineCount,
+        afterPolylineCount: afterCounts.polylineCount,
+        beforeSpanLabelCount: beforeCounts.spanLabelCount,
+        afterSpanLabelCount: afterCounts.spanLabelCount
+      });
+    },
+
+    applyDeletePatch(patch) {
+      var patchStart = this.mapPerfNow();
+      var traceId = patch && patch.traceId ? patch.traceId : '';
+      var deletedIds = this.normalizeDeviceIdList(patch.deletedIds);
+      var brokenPrevIds = this.normalizeDeviceIdList(patch.brokenPrevIds);
+      var fallbackId = this.normalizeDeviceId(patch.id);
+      if (deletedIds.length === 0 && fallbackId) deletedIds.push(fallbackId);
+
+      if (deletedIds.length === 0) {
+        this.mapPerfLog('render.applyDeletePatch.error', {
+          traceId: traceId,
+          durationMs: this.roundPerfMs(this.mapPerfNow() - patchStart),
+          reason: 'missing-deleted-ids'
+        });
+        return;
+      }
+
+      var beforeCounts = this.getLayerCounts();
+      var affectedIds = [];
+      for (var i = 0; i < deletedIds.length; i++) {
+        this.addAffectedEdgeContext(affectedIds, deletedIds[i]);
+      }
+      for (var b = 0; b < brokenPrevIds.length; b++) {
+        this.addAffectedEdgeContext(affectedIds, brokenPrevIds[b]);
+      }
+
+      var removeEdgesStart = this.mapPerfNow();
+      for (var a = 0; a < affectedIds.length; a++) {
+        this.removeEdgesForDevice(affectedIds[a]);
+      }
+      var removeEdgesEnd = this.mapPerfNow();
+
+      for (var brokenIndex = 0; brokenIndex < brokenPrevIds.length; brokenIndex++) {
+        var brokenId = brokenPrevIds[brokenIndex];
+        if (this.deviceMap[brokenId]) {
+          this.deviceMap[brokenId].prev_id = '';
+        }
+      }
+
+      var removeMarkersStart = this.mapPerfNow();
+      var removedMarkerCount = 0;
+      for (var d = 0; d < deletedIds.length; d++) {
+        var deletedId = deletedIds[d];
+        if (this.deviceMarkers[deletedId]) {
+          this.removeMapLayer(this.deviceMarkers[deletedId]);
+          removedMarkerCount++;
+        }
+
+        delete this.deviceMarkers[deletedId];
+        delete this.deviceMap[deletedId];
+        delete this.devicePolylines[deletedId];
+        delete this.deviceSpanLabels[deletedId];
+        delete this.visibleSampledDeviceIds[deletedId];
+        delete this.alwaysVisibleDeviceIds[deletedId];
+
+        if (this.hiddenDeviceId && String(this.hiddenDeviceId) === deletedId) {
+          this.hiddenDeviceId = null;
+        }
+        if (this.selectedDeviceId && String(this.selectedDeviceId) === deletedId) {
+          this.selectedDeviceId = '';
+        }
+        if (this.lastSelectedMarkerId && String(this.lastSelectedMarkerId) === deletedId) {
+          this.lastSelectedMarkerId = '';
+        }
+      }
+      var removeMarkersEnd = this.mapPerfNow();
+
+      var rebuildStart = this.mapPerfNow();
+      this.rebuildConnectionMaps();
+      var rebuildEnd = this.mapPerfNow();
+
+      var redrawStart = this.mapPerfNow();
+      var refreshedEdgeCount = 0;
+      for (var r = 0; r < affectedIds.length; r++) {
+        var affectedId = affectedIds[r];
+        if (!this.deviceMap[affectedId]) continue;
+        if (this.refreshEdgesAroundDevice(affectedId)) refreshedEdgeCount++;
+      }
+      var redrawEnd = this.mapPerfNow();
+
+      var refreshStart = this.mapPerfNow();
+      this.refreshMarkerVisibility();
+      this.applySelectedMarkerZIndex(true);
+      var patchEnd = this.mapPerfNow();
+      var afterCounts = this.getLayerCounts();
+
+      this.mapPerfLog('render.applyDeletePatch.finish', {
+        traceId: traceId,
+        durationMs: this.roundPerfMs(patchEnd - patchStart),
+        removeEdgesMs: this.roundPerfMs(removeEdgesEnd - removeEdgesStart),
+        removeMarkersMs: this.roundPerfMs(removeMarkersEnd - removeMarkersStart),
+        rebuildMapsMs: this.roundPerfMs(rebuildEnd - rebuildStart),
+        redrawEdgesMs: this.roundPerfMs(redrawEnd - redrawStart),
+        refreshVisibilityMs: this.roundPerfMs(patchEnd - refreshStart),
+        deletedIdCount: deletedIds.length,
+        brokenPrevCount: brokenPrevIds.length,
+        affectedEdgeContextCount: affectedIds.length,
+        refreshedEdgeCount: refreshedEdgeCount,
+        removedMarkerCount: removedMarkerCount,
+        beforeMarkerCount: beforeCounts.markerCount,
+        afterMarkerCount: afterCounts.markerCount,
+        beforePolylineCount: beforeCounts.polylineCount,
+        afterPolylineCount: afterCounts.polylineCount,
+        beforeSpanLabelCount: beforeCounts.spanLabelCount,
+        afterSpanLabelCount: afterCounts.spanLabelCount
+      });
+    },
+
     applyMovePatch(patch) {
+      var patchStart = this.mapPerfNow();
+      var traceId = patch && patch.traceId ? patch.traceId : '';
       var id = this.normalizeDeviceId(patch.id);
       var lat = Number(patch.lat);
       var lng = Number(patch.lng);
       if (!id || isNaN(lat) || isNaN(lng)) {
+        this.mapPerfLog('render.applyMovePatch.error', {
+          traceId: traceId,
+          deviceId: id,
+          durationMs: this.roundPerfMs(this.mapPerfNow() - patchStart),
+          reason: 'invalid-params'
+        });
         console.warn('移动 patch 参数无效:', patch);
         return;
       }
@@ -1952,20 +3237,50 @@ export default {
       var marker = this.deviceMarkers[id];
       var device = this.deviceMap[id];
       if (!marker || !device) {
+        this.mapPerfLog('render.applyMovePatch.error', {
+          traceId: traceId,
+          deviceId: id,
+          durationMs: this.roundPerfMs(this.mapPerfNow() - patchStart),
+          reason: 'missing-layer'
+        });
         console.warn('移动 patch 找不到设备图层:', patch);
         return;
       }
 
+      var beforeCounts = this.getLayerCounts();
       var latlng = [lat, lng];
+      var setLatLngStart = this.mapPerfNow();
       device.latlng = latlng;
       marker.setLatLng(latlng);
+      var rebindStart = this.mapPerfNow();
       this.rebindDeviceMarkerClick(id);
-      this.refreshEdgesAroundDevice(id);
+      var edgeStart = this.mapPerfNow();
+      var edgeRefreshed = this.refreshEdgesAroundDevice(id);
+      var visibleStart = this.mapPerfNow();
       this.setDeviceVisible(id, !this.hiddenDeviceId || String(this.hiddenDeviceId) !== id);
+      var selectionStart = this.mapPerfNow();
 
       if (this.selectedDeviceId && String(this.selectedDeviceId) === id) {
         this.applyMarkerSelectionStyle(id);
       }
+      var patchEnd = this.mapPerfNow();
+      var afterCounts = this.getLayerCounts();
+      this.mapPerfLog('render.applyMovePatch.finish', {
+        traceId: traceId,
+        deviceId: id,
+        durationMs: this.roundPerfMs(patchEnd - patchStart),
+        setLatLngMs: this.roundPerfMs(rebindStart - setLatLngStart),
+        rebindClickMs: this.roundPerfMs(edgeStart - rebindStart),
+        refreshEdgesMs: this.roundPerfMs(visibleStart - edgeStart),
+        visibilityMs: this.roundPerfMs(selectionStart - visibleStart),
+        selectionMs: this.roundPerfMs(patchEnd - selectionStart),
+        edgeRefreshed: !!edgeRefreshed,
+        beforePolylineCount: beforeCounts.polylineCount,
+        afterPolylineCount: afterCounts.polylineCount,
+        beforeSpanLabelCount: beforeCounts.spanLabelCount,
+        afterSpanLabelCount: afterCounts.spanLabelCount,
+        markerCount: afterCounts.markerCount
+      });
     },
 
     addDeviceContextToVisible(visible, deviceId) {

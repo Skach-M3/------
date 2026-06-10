@@ -7,6 +7,59 @@ import { getSchema } from '@/schema/index.js'
 import { dbHelper } from '../db/dbHelper.js'
 import { generateId, haversineDistance } from '../utils/common.js'
 
+const DAO_PERF_ENABLED = true
+const DAO_PERF_PREFIX = '[MAP_PERF]'
+let daoPerfSeq = 0
+
+function daoPerfNow() {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+        return performance.now()
+    }
+    return Date.now()
+}
+
+function roundDaoPerfMs(value) {
+    return Math.round(value * 100) / 100
+}
+
+function nextDaoTraceId(op) {
+    daoPerfSeq += 1
+    return `dao-${op}-${Date.now().toString(36)}-${daoPerfSeq}`
+}
+
+function daoPerfErrorMessage(error) {
+    return error && error.message ? error.message : String(error)
+}
+
+function daoPerfLog(event, detail = {}) {
+    if (!DAO_PERF_ENABLED) return
+
+    const payload = {
+        event,
+        layer: 'dao',
+        module: 'dao/deviceDAO.js',
+        at: new Date().toISOString(),
+        ...detail
+    }
+
+    try {
+        console.log(DAO_PERF_PREFIX, JSON.stringify(payload))
+    } catch (e) {
+        console.log(DAO_PERF_PREFIX, payload)
+    }
+}
+
+function summarizeDeviceForPerf(device = {}) {
+    device = device || {}
+    return {
+        deviceId: device.id || '',
+        lineId: device.line_id || '',
+        deviceType: device.device_type || '',
+        parentId: device.parent_id || '',
+        prevId: device.prev_id || ''
+    }
+}
+
 function parseAttributes(raw) {
     if (!raw) return {}
     if (typeof raw === 'string') {
@@ -61,6 +114,13 @@ const deviceDAO = {
      * 插入一条设备记录
      */
     async insert(device) {
+        const traceId = nextDaoTraceId('insert')
+        const perfStart = daoPerfNow()
+        daoPerfLog('dao.insert.start', {
+            traceId,
+            ...summarizeDeviceForPerf(device)
+        })
+
         const id = generateId()
         const now = Date.now()
 
@@ -85,14 +145,38 @@ const deviceDAO = {
             now
         ]
 
-        await dbHelper.execute(sql, params)
-        return id
+        try {
+            await dbHelper.execute(sql, params)
+            daoPerfLog('dao.insert.finish', {
+                traceId,
+                ...summarizeDeviceForPerf(device),
+                deviceId: id,
+                durationMs: roundDaoPerfMs(daoPerfNow() - perfStart)
+            })
+            return id
+        } catch (e) {
+            daoPerfLog('dao.insert.error', {
+                traceId,
+                deviceId: id,
+                durationMs: roundDaoPerfMs(daoPerfNow() - perfStart),
+                message: daoPerfErrorMessage(e)
+            })
+            throw e
+        }
     },
 
     /**
      * 更新设备记录
      */
     async update(id, fields) {
+        const traceId = nextDaoTraceId('update')
+        const perfStart = daoPerfNow()
+        daoPerfLog('dao.update.start', {
+            traceId,
+            ...summarizeDeviceForPerf(fields),
+            deviceId: id
+        })
+
         const now = Date.now()
 
         const sql = `UPDATE t_device SET
@@ -123,7 +207,23 @@ const deviceDAO = {
             id
         ]
 
-        await dbHelper.execute(sql, params)
+        try {
+            await dbHelper.execute(sql, params)
+            daoPerfLog('dao.update.finish', {
+                traceId,
+                ...summarizeDeviceForPerf(fields),
+                deviceId: id,
+                durationMs: roundDaoPerfMs(daoPerfNow() - perfStart)
+            })
+        } catch (e) {
+            daoPerfLog('dao.update.error', {
+                traceId,
+                deviceId: id,
+                durationMs: roundDaoPerfMs(daoPerfNow() - perfStart),
+                message: daoPerfErrorMessage(e)
+            })
+            throw e
+        }
     },
 
     /**
@@ -133,11 +233,42 @@ const deviceDAO = {
      * @param {string} latitude 纬度
      */
     async updateCoordinates(id, longitude, latitude) {
-        const now = Date.now()
-        const device = await this.findById(id)
-        if (!device) return
+        const traceId = nextDaoTraceId('updateCoordinates')
+        const perfStart = daoPerfNow()
+        daoPerfLog('dao.updateCoordinates.start', {
+            traceId,
+            deviceId: id,
+            longitude,
+            latitude
+        })
 
+        const now = Date.now()
+        const findStart = daoPerfNow()
+        const device = await this.findById(id)
+        const findDeviceMs = roundDaoPerfMs(daoPerfNow() - findStart)
+        if (!device) {
+            daoPerfLog('dao.updateCoordinates.finish', {
+                traceId,
+                deviceId: id,
+                notFound: true,
+                findDeviceMs,
+                durationMs: roundDaoPerfMs(daoPerfNow() - perfStart)
+            })
+            return
+        }
+
+        const beginStart = daoPerfNow()
         await dbHelper.execute('BEGIN TRANSACTION')
+        const beginTransactionMs = roundDaoPerfMs(daoPerfNow() - beginStart)
+        let prevLookupMs = 0
+        let updateCurrentMs = 0
+        let nextQueryMs = 0
+        let nextDistanceUpdateMs = 0
+        let nextDistanceUpdateCount = 0
+        let nextDevicesCount = 0
+        let commitMs = 0
+        let rollbackMs = 0
+
         try {
             const attrs = parseAttributes(device.attributes)
             const updatedDevice = {
@@ -151,7 +282,9 @@ const deviceDAO = {
 
             const distanceFields = getDistanceFields(device.device_type)
             if (distanceFields.length > 0 && device.prev_id) {
+                const prevLookupStart = daoPerfNow()
                 const prevDevice = await this.findById(device.prev_id)
+                prevLookupMs = roundDaoPerfMs(daoPerfNow() - prevLookupStart)
                 const distance = calcDistanceFromPrev(updatedDevice, prevDevice)
                 if (distance !== null) {
                     distanceFields.forEach(field => {
@@ -167,12 +300,17 @@ const deviceDAO = {
             sync_status = 0,
             updated_at = ?
         WHERE id = ?`
+            const updateCurrentStart = daoPerfNow()
             await dbHelper.execute(sql, [longitude, latitude, JSON.stringify(attrs), now, id])
+            updateCurrentMs = roundDaoPerfMs(daoPerfNow() - updateCurrentStart)
 
+            const nextQueryStart = daoPerfNow()
             const nextDevices = await dbHelper.select(
                 'SELECT * FROM t_device WHERE prev_id = ?',
                 [id]
             )
+            nextQueryMs = roundDaoPerfMs(daoPerfNow() - nextQueryStart)
+            nextDevicesCount = nextDevices.length
 
             for (const nextDevice of nextDevices) {
                 const nextDistanceFields = getDistanceFields(nextDevice.device_type)
@@ -186,12 +324,50 @@ const deviceDAO = {
                     nextAttrs[field.key] = distance
                 })
 
+                const nextUpdateStart = daoPerfNow()
                 await updateDeviceAttributes(nextDevice.id, nextAttrs, now)
+                nextDistanceUpdateMs += daoPerfNow() - nextUpdateStart
+                nextDistanceUpdateCount++
             }
 
+            const commitStart = daoPerfNow()
             await dbHelper.execute('COMMIT')
+            commitMs = roundDaoPerfMs(daoPerfNow() - commitStart)
+            daoPerfLog('dao.updateCoordinates.finish', {
+                traceId,
+                deviceId: id,
+                lineId: device.line_id || '',
+                deviceType: device.device_type || '',
+                findDeviceMs,
+                beginTransactionMs,
+                prevLookupMs,
+                updateCurrentMs,
+                nextQueryMs,
+                nextDevicesCount,
+                nextDistanceUpdateCount,
+                nextDistanceUpdateMs: roundDaoPerfMs(nextDistanceUpdateMs),
+                commitMs,
+                durationMs: roundDaoPerfMs(daoPerfNow() - perfStart)
+            })
         } catch (e) {
+            const rollbackStart = daoPerfNow()
             await dbHelper.execute('ROLLBACK')
+            rollbackMs = roundDaoPerfMs(daoPerfNow() - rollbackStart)
+            daoPerfLog('dao.updateCoordinates.error', {
+                traceId,
+                deviceId: id,
+                findDeviceMs,
+                beginTransactionMs,
+                prevLookupMs,
+                updateCurrentMs,
+                nextQueryMs,
+                nextDevicesCount,
+                nextDistanceUpdateCount,
+                nextDistanceUpdateMs: roundDaoPerfMs(nextDistanceUpdateMs),
+                rollbackMs,
+                durationMs: roundDaoPerfMs(daoPerfNow() - perfStart),
+                message: daoPerfErrorMessage(e)
+            })
             throw e
         }
     },
@@ -307,10 +483,34 @@ const deviceDAO = {
      * @returns {Array}
      */
     async findAllByLine(lineId) {
+        const traceId = nextDaoTraceId('findAllByLine')
+        const perfStart = daoPerfNow()
+        daoPerfLog('dao.findAllByLine.start', {
+            traceId,
+            lineId
+        })
+
         const sql = `SELECT * FROM t_device
       WHERE line_id = ?
       ORDER BY sort_order ASC, created_at ASC`
-        return await dbHelper.select(sql, [lineId])
+        try {
+            const devices = await dbHelper.select(sql, [lineId])
+            daoPerfLog('dao.findAllByLine.finish', {
+                traceId,
+                lineId,
+                durationMs: roundDaoPerfMs(daoPerfNow() - perfStart),
+                totalDevices: devices.length
+            })
+            return devices
+        } catch (e) {
+            daoPerfLog('dao.findAllByLine.error', {
+                traceId,
+                lineId,
+                durationMs: roundDaoPerfMs(daoPerfNow() - perfStart),
+                message: daoPerfErrorMessage(e)
+            })
+            throw e
+        }
     },
 
     /**
@@ -393,38 +593,122 @@ const deviceDAO = {
      * @param {string} id 设备ID
      */
     async deleteWithChildrenAndBreak(id) {
-        // 1. 查询所有子设备ID
-        const children = await dbHelper.select(
-            'SELECT id FROM t_device WHERE parent_id = ?', [id]
-        )
-        const deletedIds = [id, ...children.map(c => c.id)]
+        const traceId = nextDaoTraceId('deleteWithChildrenAndBreak')
+        const perfStart = daoPerfNow()
+        daoPerfLog('dao.deleteWithChildrenAndBreak.start', {
+            traceId,
+            deviceId: id
+        })
 
-        // 2. 将所有 prev_id 指向这些被删除设备的记录，prev_id 置空 → 连线断开
-        const now = Date.now()
-        const placeholders = deletedIds.map(() => '?').join(',')
-        await dbHelper.execute(
-            `UPDATE t_device 
+        // 1. 查询所有子设备ID
+        try {
+            const childSelectStart = daoPerfNow()
+            const children = await dbHelper.select(
+                'SELECT id FROM t_device WHERE parent_id = ?', [id]
+            )
+            const childSelectMs = roundDaoPerfMs(daoPerfNow() - childSelectStart)
+            const deletedIds = [id, ...children.map(c => c.id)]
+
+            // 2. 将所有 prev_id 指向这些被删除设备的记录，prev_id 置空 → 连线断开
+            const now = Date.now()
+            const placeholders = deletedIds.map(() => '?').join(',')
+            const brokenPrevSelectStart = daoPerfNow()
+            const brokenPrevRows = await dbHelper.select(
+                `SELECT id FROM t_device WHERE prev_id IN (${placeholders})`,
+                deletedIds
+            )
+            const brokenPrevSelectMs = roundDaoPerfMs(daoPerfNow() - brokenPrevSelectStart)
+            const deletedIdSet = new Set(deletedIds.map(item => String(item)))
+            const brokenPrevIds = brokenPrevRows
+                .map(row => row.id)
+                .filter(rowId => !deletedIdSet.has(String(rowId)))
+            const breakPrevStart = daoPerfNow()
+            await dbHelper.execute(
+                `UPDATE t_device
          SET prev_id = '', sync_status = 0, updated_at = ?
          WHERE prev_id IN (${placeholders})`,
-            [now, ...deletedIds]
-        )
+                [now, ...deletedIds]
+            )
+            const breakPrevMs = roundDaoPerfMs(daoPerfNow() - breakPrevStart)
 
-        // 3. 删除子设备
-        await dbHelper.execute('DELETE FROM t_device WHERE parent_id = ?', [id])
-        // 4. 删除自身
-        await dbHelper.execute('DELETE FROM t_device WHERE id = ?', [id])
+            // 3. 删除子设备
+            const deleteChildrenStart = daoPerfNow()
+            await dbHelper.execute('DELETE FROM t_device WHERE parent_id = ?', [id])
+            const deleteChildrenMs = roundDaoPerfMs(daoPerfNow() - deleteChildrenStart)
+            // 4. 删除自身
+            const deleteSelfStart = daoPerfNow()
+            await dbHelper.execute('DELETE FROM t_device WHERE id = ?', [id])
+            const deleteSelfMs = roundDaoPerfMs(daoPerfNow() - deleteSelfStart)
+
+            daoPerfLog('dao.deleteWithChildrenAndBreak.finish', {
+                traceId,
+                deviceId: id,
+                childCount: children.length,
+                deletedIdCount: deletedIds.length,
+                brokenPrevCount: brokenPrevIds.length,
+                childSelectMs,
+                brokenPrevSelectMs,
+                breakPrevMs,
+                deleteChildrenMs,
+                deleteSelfMs,
+                durationMs: roundDaoPerfMs(daoPerfNow() - perfStart)
+            })
+            return {
+                deletedIds,
+                brokenPrevIds,
+                childCount: children.length,
+                deletedIdCount: deletedIds.length,
+                brokenPrevCount: brokenPrevIds.length
+            }
+        } catch (e) {
+            daoPerfLog('dao.deleteWithChildrenAndBreak.error', {
+                traceId,
+                deviceId: id,
+                durationMs: roundDaoPerfMs(daoPerfNow() - perfStart),
+                message: daoPerfErrorMessage(e)
+            })
+            throw e
+        }
     },
 
     /**
      * 删除设备（同时级联删除其子设备）
      */
     async deleteWithChildren(id) {
-        await dbHelper.execute(
-            'DELETE FROM t_device WHERE parent_id = ?', [id]
-        )
-        await dbHelper.execute(
-            'DELETE FROM t_device WHERE id = ?', [id]
-        )
+        const traceId = nextDaoTraceId('deleteWithChildren')
+        const perfStart = daoPerfNow()
+        daoPerfLog('dao.deleteWithChildren.start', {
+            traceId,
+            deviceId: id
+        })
+
+        try {
+            const deleteChildrenStart = daoPerfNow()
+            await dbHelper.execute(
+                'DELETE FROM t_device WHERE parent_id = ?', [id]
+            )
+            const deleteChildrenMs = roundDaoPerfMs(daoPerfNow() - deleteChildrenStart)
+            const deleteSelfStart = daoPerfNow()
+            await dbHelper.execute(
+                'DELETE FROM t_device WHERE id = ?', [id]
+            )
+            const deleteSelfMs = roundDaoPerfMs(daoPerfNow() - deleteSelfStart)
+            daoPerfLog('dao.deleteWithChildren.finish', {
+                traceId,
+                deviceId: id,
+                deleteChildrenMs,
+                deleteSelfMs,
+                durationMs: roundDaoPerfMs(daoPerfNow() - perfStart)
+            })
+        } catch (e) {
+            daoPerfLog('dao.deleteWithChildren.error', {
+                traceId,
+                deviceId: id,
+                durationMs: roundDaoPerfMs(daoPerfNow() - perfStart),
+                message: daoPerfErrorMessage(e)
+            })
+            throw e
+        }
     },
 
     /**

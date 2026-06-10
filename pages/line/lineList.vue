@@ -218,8 +218,9 @@ const handleCreate = () => {
 
     .header-left {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       flex: 1;
+      min-width: 0;
 
       .tag {
         font-size: 24rpx;
@@ -227,6 +228,7 @@ const handleCreate = () => {
         border-radius: 20rpx;
         margin-right: 16rpx;
         font-weight: 500;
+        flex-shrink: 0;
       }
 
       .title {
@@ -234,9 +236,9 @@ const handleCreate = () => {
         font-weight: bold;
         color: #333333;
         flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        line-height: 44rpx;
+        white-space: normal;
+        word-break: break-all;
       }
     }
 
@@ -244,6 +246,7 @@ const handleCreate = () => {
       font-size: 26rpx;
       color: #999999;
       margin-left: 20rpx;
+      flex-shrink: 0;
     }
   }
 
